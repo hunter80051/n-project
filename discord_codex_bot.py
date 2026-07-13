@@ -205,9 +205,11 @@ def build_prompt(task: str, project_name: str) -> str:
 {task}
 
 請直接在目前工作目錄內完成任務。先檢查現有檔案與規範，再進行必要修改並執行適當驗證。
-對範圍明確的程式碼產出，可使用受限 Local Agent：
+此專案啟用 AI 小組展示模式。凡是涉及 HTML、CSS、JavaScript、TypeScript、Python 或其他程式碼檔案的新增或修改，必須至少將一個範圍明確的實作子任務交給受限 Local Agent，即使只是單一數值或單一檔案修改也不可略過。純查詢、Git 管理或沒有程式碼變更的任務可以不派發。
+使用受限 Local Agent：
 python ollama_local_agent.py --task "明確任務" --file "允許修改的相對路徑" --apply
 你必須明確指定每個允許檔案，Local Agent 完成後仍由你檢查 git diff 並執行測試。
+不可自行完成全部程式碼修改後再假裝派工；若 Local Agent 失敗，必須保留失敗事件並由你判斷修正或回報。
 不要存取目前專案以外的檔案，不要提交 git commit，不要推送遠端，不要刪除使用者資料。
 最後以繁體中文簡潔回報：完成內容、驗證結果、以及任何仍需使用者處理的事項。
 """
