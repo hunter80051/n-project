@@ -1,0 +1,17 @@
+{
+  "command_prefix": "!",
+  "codex_command": "codex",
+  "sandbox": "workspace-write",
+  "skip_git_repo_check": true,
+  "job_store_path": "C:\\Users\\hikar\\OneDrive\\文件\\N-Project (Vibe coding)\\jobs.json",
+  "allowed_user_ids": [
+    "YOUR_DISCORD_USER_ID"
+  ],
+  "channels": {
+    "YOUR_DISCORD_CHANNEL_ID": {
+      "project_name": "N-Project",
+      "local_path": "C:\\Users\\hikar\\OneDrive\\文件\\N-Project (Vibe coding)",
+      "branch": "main"
+    }
+  }
+}

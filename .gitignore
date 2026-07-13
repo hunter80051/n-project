@@ -1,0 +1,9 @@
+.env
+TOB KEN.txt
+config.json
+__pycache__/
+*.pyc
+bot.log
+bot-startup.log
+jobs.json
+jobs.json.tmp
