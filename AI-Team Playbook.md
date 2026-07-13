@@ -80,12 +80,14 @@ Discord 可以用來整理任務的下達、派發、回覆與討論，但不建
   "models": {
     "localCoder": {
       "provider": "ollama",
-      "model": "qwen2.5-coder:14b",
+      "model": "qwen2.5-coder:7b",
       "baseUrl": "http://localhost:11434"
     }
   }
 }
 ```
+
+展示階段先在開發電腦使用 `qwen2.5-coder:7b`，以 16 GB RAM 與 8 GB VRAM 完成工作流程驗證。正式階段預計將 Ollama 部署到獨立機器，Codex 再透過有線網路或 Wi-Fi 內網呼叫 Ollama API；屆時可依伺服器硬體升級為 14B 或更大的模型，而不需要改變 Orchestrator 的任務格式與權限邊界。
 
 ## 6. 權限設計
 
