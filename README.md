@@ -25,7 +25,7 @@ python discord_codex_bot.py
 - `!fix <任務描述>`：修復問題。
 - `!status`：查看綁定專案與目前狀態。
 - `!retry [補充說明]`：重跑上一個任務。
-- `!approve`：核准目前變更並建立 Git commit。
+- `!approve`：任務完成後需輸入此指令核准變更，才會建立 Git commit。
 - `!cancel`：中止執行中的任務。
 - `!help`：顯示指令。
 
