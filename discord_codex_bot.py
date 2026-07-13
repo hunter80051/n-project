@@ -179,10 +179,15 @@ async def require_clean_git_project(path: Path) -> str | None:
     code, _, _ = await run_git(path, "rev-parse", "--verify", "HEAD")
     if code != 0:
         return "Git 尚無初始 commit，請先建立專案基準版本。"
-    code, output, error = await run_git(path, "status", "--porcelain")
-    if code != 0:
-        return f"無法檢查 Git 狀態：{error or output}"
-    if output:
+    code, _, error = await run_git(path, "diff", "--quiet", "HEAD", "--")
+    if code not in (0, 1):
+        return f"無法檢查 Git 變更：{error}"
+    untracked_code, untracked, error = await run_git(
+        path, "ls-files", "--others", "--exclude-standard"
+    )
+    if untracked_code != 0:
+        return f"無法檢查未追蹤檔案：{error or untracked}"
+    if code == 1 or untracked:
         return "Git 工作樹目前有未提交變更，請先處理後再建立新任務。"
     return None
 
