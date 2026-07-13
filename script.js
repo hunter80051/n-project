@@ -1,4 +1,5 @@
-const GAME_SECONDS = 30;
+const GAME_SECONDS = 35;
+const INITIAL_TARGET_SIZE = 56;
 
 const arena = document.getElementById('arena');
 const target = document.getElementById('target');
@@ -11,12 +12,19 @@ let score = 0;
 let timeLeft = GAME_SECONDS;
 let timerId = null;
 let isPlaying = false;
+let targetSize = INITIAL_TARGET_SIZE;
 
 function moveTarget() {
   const maxX = arena.clientWidth - target.offsetWidth;
   const maxY = arena.clientHeight - target.offsetHeight;
   target.style.left = `${Math.floor(Math.random() * maxX)}px`;
   target.style.top = `${Math.floor(Math.random() * maxY)}px`;
+}
+
+function increaseDifficulty() {
+  targetSize *= 0.5;
+  target.style.width = `${targetSize}px`;
+  target.style.height = `${targetSize}px`;
 }
 
 function endGame() {
@@ -32,6 +40,9 @@ function startGame() {
   clearInterval(timerId);
   score = 0;
   timeLeft = GAME_SECONDS;
+  targetSize = INITIAL_TARGET_SIZE;
+  target.style.width = `${targetSize}px`;
+  target.style.height = `${targetSize}px`;
   isPlaying = true;
   scoreDisplay.textContent = score;
   timeDisplay.textContent = timeLeft;
@@ -54,6 +65,12 @@ target.addEventListener('click', () => {
   if (!isPlaying) return;
   score += 1;
   scoreDisplay.textContent = score;
+
+  // 增加難度門檻
+  if (score % 10 === 0) {
+    increaseDifficulty();
+  }
+
   moveTarget();
 });
 
