@@ -42,6 +42,7 @@ CONFIG = load_config()
 PREFIX = CONFIG.get("command_prefix", "!")
 ALLOWED_USERS = {int(x) for x in CONFIG.get("allowed_user_ids", [])}
 JOB_STORE_PATH = Path(CONFIG.get("job_store_path", BASE_DIR / "jobs.json"))
+EVENT_DIR = BASE_DIR / ".job-events"
 
 
 def load_states() -> dict[int, ChannelState]:
@@ -123,6 +124,39 @@ async def send_long(ctx: commands.Context, text: str) -> None:
     text = text.strip() or "（Codex 沒有回傳文字）"
     for start in range(0, len(text), DISCORD_LIMIT):
         await ctx.send(text[start : start + DISCORD_LIMIT], allowed_mentions=discord.AllowedMentions.none())
+
+
+async def relay_team_events(
+    ctx: commands.Context, event_path: Path, communicate_task: asyncio.Task
+) -> None:
+    seen = 0
+    while True:
+        if event_path.exists():
+            lines = event_path.read_text(encoding="utf-8").splitlines()
+            for line in lines[seen:]:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    break
+                seen += 1
+                message = clean_mentions(str(event.get("message", "")))[:900]
+                files = [str(value) for value in event.get("files", [])][:10]
+                file_text = f"\n允許/修改檔案：`{'`, `'.join(files)}`" if files else ""
+                event_type = event.get("type")
+                if event_type == "delegated":
+                    text = f"📋 **Codex → Ollama 派工**\n{message}{file_text}"
+                elif event_type == "started":
+                    text = f"🤖 **Ollama Local Agent 開始處理**{file_text}"
+                elif event_type == "completed":
+                    text = f"✅ **Ollama Local Agent 完成**\n{message}{file_text}\n🔍 Codex 開始審查與驗證。"
+                elif event_type == "failed":
+                    text = f"❌ **Ollama Local Agent 失敗**\n{message}"
+                else:
+                    continue
+                await ctx.send(text, allowed_mentions=discord.AllowedMentions.none())
+        if communicate_task.done():
+            return
+        await asyncio.sleep(1)
 
 
 async def run_git(path: Path, *args: str) -> tuple[int, str, str]:
@@ -240,7 +274,10 @@ async def execute_task(
         task=task,
         last_result="執行中",
     )
-    await ctx.send(f"📡 已連接 `{cfg.get('project_name', path.name)}`，Codex 開始處理任務。")
+    await ctx.send(
+        f"📡 已連接 `{cfg.get('project_name', path.name)}`\n"
+        f"🧭 **Codex 開始分析與拆分任務**\nJob：`{job_id}`"
+    )
 
     args = [
         CONFIG.get("codex_command", "codex"),
@@ -257,6 +294,10 @@ async def execute_task(
     local_agent = CONFIG.get("local_agent", {})
     process_env["OLLAMA_MODEL"] = local_agent.get("model", "qwen2.5-coder:7b")
     process_env["OLLAMA_BASE_URL"] = local_agent.get("base_url", "http://127.0.0.1:11434")
+    EVENT_DIR.mkdir(parents=True, exist_ok=True)
+    event_path = EVENT_DIR / f"{ctx.channel.id}-{job_id}.jsonl"
+    event_path.unlink(missing_ok=True)
+    process_env["AI_TEAM_EVENT_FILE"] = str(event_path)
 
     try:
         state.process = await asyncio.create_subprocess_exec(
@@ -267,9 +308,13 @@ async def execute_task(
             cwd=path,
             env=process_env,
         )
-        stdout, stderr = await state.process.communicate(
-            build_prompt(task, cfg.get("project_name", path.name)).encode("utf-8")
+        communicate_task = asyncio.create_task(
+            state.process.communicate(
+                build_prompt(task, cfg.get("project_name", path.name)).encode("utf-8")
+            )
         )
+        await relay_team_events(ctx, event_path, communicate_task)
+        stdout, stderr = await communicate_task
         output = stdout.decode("utf-8", errors="replace").strip()
         error = stderr.decode("utf-8", errors="replace").strip()
         if state.process.returncode == 0:

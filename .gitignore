@@ -7,3 +7,4 @@ bot.log
 bot-startup.log
 jobs.json
 jobs.json.tmp
+.job-events/

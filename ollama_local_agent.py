@@ -17,6 +17,22 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
+def emit_event(event_type: str, message: str, files: list[str] | None = None) -> None:
+    value = os.getenv("AI_TEAM_EVENT_FILE")
+    if not value:
+        return
+    path = Path(value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "role": "ollama" if event_type != "delegated" else "codex",
+        "type": event_type,
+        "message": message,
+        "files": files or [],
+    }
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
 def allowed_path(root: Path, value: str) -> Path:
     relative = Path(value)
     if relative.is_absolute() or ".." in relative.parts:
@@ -74,6 +90,8 @@ def main() -> int:
             raise ValueError(f"檔案過大，拒絕交給 Local Agent：{relative}")
         current[relative] = content
 
+    emit_event("delegated", args.task, list(allowed))
+    emit_event("started", "Local Agent 已開始產生程式碼", list(allowed))
     result = request_changes(args.task, current)
     outputs = result.get("files")
     if not isinstance(outputs, list):
@@ -96,6 +114,12 @@ def main() -> int:
             temp_path.write_text(content, encoding="utf-8")
             temp_path.replace(path)
 
+    emit_event(
+        "completed",
+        result.get("summary", "Local Agent 已完成產碼"),
+        [relative for relative, _, _ in prepared],
+    )
+
     print(json.dumps(
         {
             "applied": args.apply,
@@ -111,5 +135,6 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:
+        emit_event("failed", str(exc))
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         raise SystemExit(1)

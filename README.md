@@ -37,6 +37,7 @@ python discord_codex_bot.py
 - Bot 不會自動 commit 或 push；版本確認仍由人處理。
 - 新任務開始前要求乾淨的 Git 工作樹，任務完成後必須收到 `!approve` 才會 commit。
 - Codex 可將範圍明確的產碼工作交給本機 Ollama Local Agent；Local Agent 只能修改 Codex 指定的檔案，不能操作 Git 或 Shell。
+- Discord 會即時顯示 Codex 派工、Ollama 開始/完成，以及 Codex 審查驗證等協作里程碑；不顯示模型的隱藏推理內容。
 - 一個頻道同時只執行一個 Codex 任務。
 - 任務狀態會保存至 `jobs.json`，Bot 重啟後仍可用 `!status` 查詢上次任務。
 
