@@ -240,10 +240,11 @@ async def execute_task(
     await ctx.send(f"📡 已連接 `{cfg.get('project_name', path.name)}`，Codex 開始處理任務。")
 
     args = [
-        CONFIG.get("codex_command", "codex"), "exec", "-",
+        CONFIG.get("codex_command", "codex"),
+        "--ask-for-approval", "never",
+        "exec", "-",
         "--cd", str(path),
         "--sandbox", CONFIG.get("sandbox", "workspace-write"),
-        "--ask-for-approval", "never",
         "--color", "never",
     ]
     if CONFIG.get("skip_git_repo_check", True):
