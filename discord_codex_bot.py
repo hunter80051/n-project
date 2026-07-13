@@ -166,6 +166,9 @@ def build_prompt(task: str, project_name: str) -> str:
 {task}
 
 請直接在目前工作目錄內完成任務。先檢查現有檔案與規範，再進行必要修改並執行適當驗證。
+對範圍明確的程式碼產出，可使用受限 Local Agent：
+python ollama_local_agent.py --task "明確任務" --file "允許修改的相對路徑" --apply
+你必須明確指定每個允許檔案，Local Agent 完成後仍由你檢查 git diff 並執行測試。
 不要存取目前專案以外的檔案，不要提交 git commit，不要推送遠端，不要刪除使用者資料。
 最後以繁體中文簡潔回報：完成內容、驗證結果、以及任何仍需使用者處理的事項。
 """
@@ -250,6 +253,11 @@ async def execute_task(
     if CONFIG.get("skip_git_repo_check", True):
         args.append("--skip-git-repo-check")
 
+    process_env = os.environ.copy()
+    local_agent = CONFIG.get("local_agent", {})
+    process_env["OLLAMA_MODEL"] = local_agent.get("model", "qwen2.5-coder:7b")
+    process_env["OLLAMA_BASE_URL"] = local_agent.get("base_url", "http://127.0.0.1:11434")
+
     try:
         state.process = await asyncio.create_subprocess_exec(
             *args,
@@ -257,6 +265,7 @@ async def execute_task(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=path,
+            env=process_env,
         )
         stdout, stderr = await state.process.communicate(
             build_prompt(task, cfg.get("project_name", path.name)).encode("utf-8")

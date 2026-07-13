@@ -36,6 +36,7 @@ python discord_codex_bot.py
 - Codex 使用 `workspace-write` sandbox，不開啟危險的全權模式。
 - Bot 不會自動 commit 或 push；版本確認仍由人處理。
 - 新任務開始前要求乾淨的 Git 工作樹，任務完成後必須收到 `!approve` 才會 commit。
+- Codex 可將範圍明確的產碼工作交給本機 Ollama Local Agent；Local Agent 只能修改 Codex 指定的檔案，不能操作 Git 或 Shell。
 - 一個頻道同時只執行一個 Codex 任務。
 - 任務狀態會保存至 `jobs.json`，Bot 重啟後仍可用 `!status` 查詢上次任務。
 

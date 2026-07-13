@@ -4,6 +4,10 @@
   "sandbox": "workspace-write",
   "skip_git_repo_check": true,
   "job_store_path": "C:\\Users\\hikar\\OneDrive\\文件\\N-Project (Vibe coding)\\jobs.json",
+  "local_agent": {
+    "model": "qwen2.5-coder:7b",
+    "base_url": "http://127.0.0.1:11434"
+  },
   "allowed_user_ids": [
     "YOUR_DISCORD_USER_ID"
   ],
