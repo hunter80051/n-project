@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -45,6 +46,11 @@ def main() -> int:
         return 1
 
     node = shutil.which("node")
+    if not node and sys.platform == "win32":
+        program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+        installed_node = program_files / "nodejs/node.exe"
+        if installed_node.is_file():
+            node = str(installed_node)
     if node:
         for script in sorted(set(javascript)):
             result = subprocess.run(
