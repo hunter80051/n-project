@@ -57,8 +57,26 @@ task:
 allowedFiles 與目前內容：
 {json.dumps(files, ensure_ascii=False)}
 """
+    output_schema = {
+        "type": "object",
+        "required": ["summary", "files"],
+        "properties": {
+            "summary": {"type": "string"},
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["path", "content"],
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                },
+            },
+        },
+    }
     payload = json.dumps(
-        {"model": model, "prompt": prompt, "stream": False, "format": "json"}
+        {"model": model, "prompt": prompt, "stream": False, "format": output_schema}
     ).encode("utf-8")
     request = urllib.request.Request(
         f"{base_url}/api/generate",
