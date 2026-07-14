@@ -1,4 +1,4 @@
-const GAME_SECONDS = 30;
+const GAME_SECONDS = 32;
 const INITIAL_TARGET_SIZE = 56;
 
 const arena = document.getElementById('arena');
