@@ -120,6 +120,29 @@ def clean_mentions(text: str) -> str:
     return re.sub(r"<@!?\d+>|<@&\d+>|@everyone|@here", "", text).strip()
 
 
+def validation_links(text: str) -> str:
+    urls = []
+    url_pattern = r"https?://[^\s<>\]，。；：！？]+"
+    for match in re.finditer(url_pattern, text):
+        url = match.group(0).rstrip("`'\".,;:!?，。；：！？)]}")
+        if url and url not in urls:
+            urls.append(url)
+    text_without_urls = re.sub(url_pattern, "", text)
+    for match in re.finditer(
+        r"(?<![\w.:/])(?:localhost|127\.0\.0\.1)(?::\d+)?"
+        r"(?:/[^\s<>\]，。；：！？]*)?",
+        text_without_urls,
+    ):
+        address = match.group(0).rstrip("`'\".,;:!?，。；：！？)]}")
+        url = f"http://{address}"
+        if address and url not in urls:
+            urls.append(url)
+    if not urls:
+        return ""
+    links = "\n".join(f"- [{url}]({url})" for url in urls)
+    return f"\n\n驗證連結：\n{links}"
+
+
 async def send_long(ctx: commands.Context, text: str) -> None:
     text = text.strip() or "（Codex 沒有回傳文字）"
     for start in range(0, len(text), DISCORD_LIMIT):
@@ -328,10 +351,12 @@ async def execute_task(
             files = await changed_files(path)
             if files:
                 update_state(state, status="waiting_approval", last_result=output)
+                link_text = validation_links(output)
                 await send_long(
                     ctx,
                     f"✅ Codex 任務完成，等待核准\n\n{output}\n\n"
                     f"變更檔案：{', '.join(files)}\n"
+                    f"{link_text}\n"
                     f"確認後請輸入 `{PREFIX}approve`。",
                 )
             else:
