@@ -1,0 +1,16 @@
+key,value,type,description
+tileSize,24,number,Canvas tile size in pixels
+canvasWidth,960,number,Canvas internal width
+canvasHeight,540,number,Canvas internal height
+simulationStepMs,100,number,Fixed simulation step
+partyMoveSpeed,3.4,number,Party movement speed in tiles per second
+roomCountMin,5,number,Minimum procedural room count
+roomCountMax,7,number,Maximum procedural room count
+roomMinSize,4,number,Minimum room edge length
+roomMaxSize,7,number,Maximum room edge length
+floorEnemyBase,6,number,Base enemy count per normal floor
+xpBase,40,number,Experience needed for first level up
+xpGrowth,1.35,number,Experience requirement multiplier
+spRegenPerSecond,2.5,number,Passive SP regeneration
+equipmentNoticeMs,3500,number,Equipment notice duration
+dungeonDifficultyGrowth,1.18,number,Difficulty multiplier after each dungeon clear

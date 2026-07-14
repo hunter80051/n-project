@@ -3,22 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>32 秒點擊遊戲</title>
+  <meta name="description" content="固定小隊自動探索三層程序式地下城的單機網頁 RPG 展示版">
+  <title>DTTO Friends Dungeon Prototype</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="game">
-    <h1>32 秒點擊遊戲</h1>
-    <div class="stats" aria-live="polite">
-      <p>分數：<strong id="score">0</strong></p>
-      <p>剩餘時間：<strong id="time">32</strong> 秒</p>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">DTTO FRIENDS DUNGEON PROTOTYPE</p>
+        <h1 id="scene-name">準備冒險</h1>
+      </div>
+      <div class="topbar-status" aria-live="polite">
+        <span id="floor-label">大地圖</span>
+        <span id="progress-label">地下城 0</span>
+        <button id="pause-button" class="ghost-button" type="button">暫停</button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+      <section class="stage-column" aria-label="遊戲畫面">
+        <div class="canvas-frame">
+          <canvas id="game-canvas" width="960" height="540">
+            瀏覽器不支援 Canvas，無法執行遊戲。
+          </canvas>
+          <button id="enter-dungeon-button" class="enter-dungeon-button" type="button" hidden>
+            進入下一座地下城
+          </button>
+        </div>
+
+        <section class="event-panel" aria-label="冒險紀錄">
+          <div class="section-heading">
+            <h2>冒險紀錄</h2>
+            <span>最新事件</span>
+          </div>
+          <div id="event-log" class="event-log" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel party-panel">
+          <div class="section-heading">
+            <h2>固定小隊</h2>
+            <span>自動探索</span>
+          </div>
+          <div id="party-list" class="party-list"></div>
+        </section>
+
+        <section class="panel scroll-panel">
+          <div class="section-heading">
+            <h2>卷軸法術</h2>
+            <span>點擊施放</span>
+          </div>
+          <div id="scroll-list" class="scroll-list"></div>
+        </section>
+      </aside>
     </div>
-    <p id="message">按下開始後，盡快點擊圓形目標！</p>
-    <div id="arena" class="arena" aria-label="遊戲區">
-      <button id="target" class="target" type="button" aria-label="點擊目標" disabled></button>
-    </div>
-    <button id="start-button" class="start-button" type="button">開始遊戲</button>
   </main>
-  <script src="script.js"></script>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <div id="loading-overlay" class="screen-overlay">
+    <div class="overlay-card">
+      <span class="loading-orb" aria-hidden="true"></span>
+      <strong>正在整理冒險資料</strong>
+      <p id="loading-message">載入 Google Sheet 相容配置中…</p>
+    </div>
+  </div>
+
+  <div id="error-overlay" class="screen-overlay" hidden>
+    <div class="overlay-card error-card">
+      <strong>遊戲無法啟動</strong>
+      <p id="error-message"></p>
+    </div>
+  </div>
+
+  <dialog id="skill-modal" class="skill-modal" aria-labelledby="skill-modal-title">
+    <div class="modal-heading">
+      <p class="eyebrow">LEVEL UP</p>
+      <h2 id="skill-modal-title">選擇技能</h2>
+      <p id="skill-modal-description"></p>
+    </div>
+    <div id="skill-choice-list" class="skill-choice-list"></div>
+  </dialog>
+
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "tables": {
+    "balance": "data/balance.csv",
+    "characters": "data/characters.csv",
+    "skills": "data/skills.csv",
+    "enemies": "data/enemies.csv",
+    "items": "data/items.csv",
+    "lootTables": "data/loot_tables.csv",
+    "scrolls": "data/scrolls.csv",
+    "dungeons": "data/dungeons.csv"
+  }
+}

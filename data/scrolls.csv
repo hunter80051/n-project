@@ -1,0 +1,4 @@
+scrollId,name,description,effectType,targetType,power,spCost,iconId,initialQuantity
+scroll_fire,Fire Burst,對主要敵人與附近敵人造成火焰傷害,aoeDamage,enemy,48,0,icon_fire,2
+scroll_chain,Chain Spark,閃電在最多三名敵人之間跳躍,chainDamage,enemy,34,0,icon_chain,1
+scroll_heal,Healing Light,立即恢復全隊生命值,partyHeal,party,52,0,icon_heal,1

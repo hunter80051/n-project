@@ -1,0 +1,9 @@
+itemId,name,slot,rarity,iconId,attackBonus,defenseBonus,maxHpBonus,maxSpBonus,score
+item_spatula,Sunrise Spatula,weapon,common,icon_spatula,4,0,0,0,4
+item_bass,Secondhand Bass,weapon,common,icon_bass,5,0,0,3,5
+item_wrench,Trusty Wrench,weapon,uncommon,icon_wrench,8,1,0,0,9
+item_starwand,Pocket Star Wand,weapon,rare,icon_starwand,10,0,0,8,12
+item_apron,Cozy Apron,armor,common,icon_apron,0,3,18,0,4
+item_neckpillow,Travel Neck Pillow,armor,common,icon_pillow,0,2,28,0,5
+item_hardhat,Engineer Hard Hat,armor,uncommon,icon_hardhat,0,6,35,0,9
+item_mooncoat,Midnight Stage Coat,armor,rare,icon_coat,2,7,25,10,13

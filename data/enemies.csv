@@ -1,0 +1,9 @@
+enemyId,name,tier,color,spriteId,maxHp,attack,defense,speed,attackRange,attackCooldownMs,xp,lootTableId,isBoss
+enemy_dust,Dust Bunny,1,#cabfae,sprite_dust,70,8,2,2.2,1.1,1300,10,loot_common,false
+enemy_mushroom,Gloom Shroom,1,#b58bbd,sprite_mushroom,85,9,3,1.8,1.1,1450,12,loot_common,false
+enemy_slime,Jam Slime,1,#e68aa4,sprite_slime,95,10,4,1.7,1.1,1500,14,loot_common,false
+enemy_bat,Night Moth,2,#77718b,sprite_bat,105,12,4,2.8,1.4,1250,16,loot_uncommon,false
+enemy_wisp,Lost Wisp,2,#72bed0,sprite_wisp,90,14,3,2.4,3.4,1650,18,loot_uncommon,false
+enemy_golem,Snack Golem,2,#b98b68,sprite_golem,150,15,8,1.4,1.2,1800,24,loot_uncommon,false
+boss_pillow,Pillow Tyrant,3,#6f6381,sprite_boss_pillow,720,24,10,1.6,2.0,1200,110,loot_boss,true
+boss_fridge,Midnight Fridge,3,#5b8290,sprite_boss_fridge,840,26,12,1.3,2.4,1350,125,loot_boss,true

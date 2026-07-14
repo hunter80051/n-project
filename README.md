@@ -1,3 +1,42 @@
+# DTTO Friends Dungeon Prototype
+
+根目錄網站已由原本的 32 秒點擊遊戲替換為單機網頁 RPG 展示版。
+
+主要功能：
+
+- 固定四人小隊自動探索與自動戰鬥。
+- 前兩層程序式房間／走廊，第三層固定 Boss 房。
+- 清空敵人後解鎖樓梯，完成三層回到大地圖並進入下一座地下城。
+- HP／SP、雙幀攻擊表現、升級三選一、裝備替換提示及三種卷軸。
+- Canvas 遊戲畫面搭配 DOM 隊伍、卷軸、事件與升級介面。
+- 配置由 `data/manifest.json` 與八張 CSV 載入，跨表資料使用穩定 ID。
+
+## 本機預覽與驗證
+
+由於遊戲使用 `fetch()` 讀取 CSV，請使用 HTTP server，不要直接雙擊 `index.html`：
+
+```powershell
+python -m http.server 8000
+```
+
+開啟 `http://127.0.0.1:8000/`。
+
+執行完整靜態驗證：
+
+```powershell
+python validate_project.py
+```
+
+驗證器會檢查 HTML 引用、全部 `src/*.js` 語法、manifest、CSV 欄位、數字、主鍵與外鍵。
+
+## Google Sheets 配置
+
+資料欄位與發布方式記錄於 `data/README.md`。目前 manifest 指向 repository 內的 CSV；未來可把各表 URL 換成 Google Sheets「發布到網路」產生的公開 CSV URL，遊戲程式不需修改。
+
+完整開發範圍、驗收及規格變更紀錄請見 `PLANS.md`。
+
+---
+
 # Discord → Codex 訊息橋接
 
 這是依據 `project_simple.md` 建立的第一階段版本：每個 Discord 頻道固定綁定一個本機專案目錄，並以 `!build` 將任務交給本機 Codex CLI 執行。

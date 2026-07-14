@@ -1,0 +1,14 @@
+lootTableId,dropType,dropId,weight,chance,minQuantity,maxQuantity
+loot_common,item,item_spatula,30,0.18,1,1
+loot_common,item,item_bass,25,0.16,1,1
+loot_common,item,item_apron,30,0.18,1,1
+loot_common,item,item_neckpillow,25,0.16,1,1
+loot_common,scroll,scroll_fire,15,0.08,1,1
+loot_uncommon,item,item_wrench,25,0.22,1,1
+loot_uncommon,item,item_hardhat,25,0.22,1,1
+loot_uncommon,item,item_starwand,10,0.09,1,1
+loot_uncommon,item,item_mooncoat,10,0.09,1,1
+loot_uncommon,scroll,scroll_chain,18,0.12,1,1
+loot_boss,item,item_starwand,30,0.65,1,1
+loot_boss,item,item_mooncoat,30,0.65,1,1
+loot_boss,scroll,scroll_heal,25,0.8,1,2

@@ -1,0 +1,21 @@
+skillId,skillPoolId,name,description,effectType,targetType,power,spCost,cooldownMs,requiredLevel,iconId
+skill_dinu_guard,pool_dinu,守護撞擊,造成傷害並短暫提高自身防禦,guardStrike,enemy,1.1,8,3200,1,icon_guard
+skill_dinu_sturdy,pool_dinu,可靠夥伴,最大 HP 提高 20%,maxHp,self,0.2,0,0,2,icon_heart
+skill_dinu_shell,pool_dinu,一起撐住,全隊防禦提高 12%,defenseBuff,party,0.12,0,0,3,icon_shield
+skill_dinu_bark,pool_dinu,開朗打氣,全隊攻擊提高 10%,attackBuff,party,0.1,0,0,4,icon_cheer
+skill_dinu_paws,pool_dinu,快速腳步,自身攻擊冷卻縮短 15%,haste,self,0.15,0,0,5,icon_speed
+skill_hoya_mend,pool_hoya,星光照護,治療生命最低的隊友,heal,ally,0.32,14,2600,1,icon_heal
+skill_hoya_warm,pool_hoya,溫柔光線,治療效果提高 22%,healPower,self,0.22,0,0,2,icon_heal
+skill_hoya_aura,pool_hoya,守護光環,全隊每秒恢復少量 HP,regen,party,2.4,0,0,3,icon_aura
+skill_hoya_reserve,pool_hoya,星星口袋,最大 SP 提高 25%,maxSp,self,0.25,0,0,4,icon_star
+skill_hoya_feather,pool_hoya,幸運羽毛,全隊攻擊提高 8%,attackBuff,party,0.08,0,0,5,icon_luck
+skill_lynn_bolt,pool_lynn,冷調音符,發射遠距魔法攻擊,damage,enemy,1.35,10,2100,1,icon_note
+skill_lynn_focus,pool_lynn,專注演奏,自身攻擊提高 24%,attackBuff,self,0.24,0,0,2,icon_focus
+skill_lynn_wave,pool_lynn,低音震波,攻擊附帶小範圍傷害,aoeBonus,self,0.45,0,0,3,icon_wave
+skill_lynn_mind,pool_lynn,冷靜節拍,每秒 SP 恢復提高 2,spRegen,self,2,0,0,4,icon_sp
+skill_lynn_static,pool_lynn,靜電和弦,攻擊會連鎖一個額外目標,chainBonus,self,0.55,0,0,5,icon_chain
+skill_bob_smash,pool_bob,工具重擊,強力近戰攻擊,damage,enemy,1.5,9,2400,1,icon_hammer
+skill_bob_tools,pool_bob,重型工具,自身攻擊提高 25%,attackBuff,self,0.25,0,0,2,icon_hammer
+skill_bob_hat,pool_bob,安全帽,自身防禦提高 20%,defenseBuff,self,0.2,0,0,3,icon_helmet
+skill_bob_clock,pool_bob,工程加速,自身攻擊冷卻縮短 18%,haste,self,0.18,0,0,4,icon_speed
+skill_bob_steady,pool_bob,穩定施工,最大 HP 提高 15% 且攻擊提高 8%,hybridBuff,self,0.15,0,0,5,icon_tools
