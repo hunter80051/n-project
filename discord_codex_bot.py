@@ -5,9 +5,13 @@ import json
 import logging
 import os
 import re
+import shlex
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import discord
 from discord.ext import commands
@@ -26,6 +30,13 @@ class ChannelState:
     task: str = ""
     last_result: str = "尚無執行紀錄"
     updated_at: str = ""
+    changed_files: list[str] = field(default_factory=list)
+    validation_result: str = ""
+    base_commit: str = ""
+    preview_commit: str = ""
+    preview_url: str = ""
+    file_hashes: dict[str, str] = field(default_factory=dict)
+    final_commit: str = ""
     process: asyncio.subprocess.Process | None = field(default=None, repr=False)
 
 
@@ -69,6 +80,13 @@ def save_states() -> None:
                 "task": state.task,
                 "last_result": state.last_result,
                 "updated_at": state.updated_at,
+                "changed_files": state.changed_files,
+                "validation_result": state.validation_result,
+                "base_commit": state.base_commit,
+                "preview_commit": state.preview_commit,
+                "preview_url": state.preview_url,
+                "file_hashes": state.file_hashes,
+                "final_commit": state.final_commit,
             }
             for channel_id, state in states.items()
         }
@@ -78,7 +96,7 @@ def save_states() -> None:
     temp_path.replace(JOB_STORE_PATH)
 
 
-def update_state(state: ChannelState, **changes: str) -> None:
+def update_state(state: ChannelState, **changes: Any) -> None:
     for key, value in changes.items():
         setattr(state, key, value)
     state.updated_at = datetime.now(timezone.utc).isoformat()
@@ -190,6 +208,115 @@ async def run_git(path: Path, *args: str) -> tuple[int, str, str]:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+
+
+async def run_command(path: Path, command: list[str]) -> tuple[int, str, str]:
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        cwd=path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    return (
+        process.returncode,
+        stdout.decode("utf-8", errors="replace").strip(),
+        stderr.decode("utf-8", errors="replace").strip(),
+    )
+
+
+async def current_commit(path: Path) -> str:
+    code, value, error = await run_git(path, "rev-parse", "HEAD")
+    if code != 0:
+        raise RuntimeError(error or value or "無法讀取目前 commit")
+    return value
+
+
+async def hash_files(path: Path, files: list[str]) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for file in files:
+        if not (path / file).is_file():
+            hashes[file] = "<deleted>"
+            continue
+        code, value, error = await run_git(path, "hash-object", "--", file)
+        if code != 0:
+            raise RuntimeError(f"無法計算檔案雜湊 {file}：{error or value}")
+        hashes[file] = value
+    return hashes
+
+
+def validation_command(cfg: dict) -> list[str]:
+    value = cfg.get("validation_command", ["python", "validate_project.py"])
+    if isinstance(value, str):
+        return shlex.split(value, posix=False)
+    if isinstance(value, list) and value and all(isinstance(part, str) for part in value):
+        return value
+    raise ValueError("validation_command 必須是非空字串陣列")
+
+
+async def validate_project(path: Path, cfg: dict) -> tuple[bool, str]:
+    command = validation_command(cfg)
+    code, output, error = await run_command(path, command)
+    detail = "\n".join(value for value in (output, error) if value).strip()
+    return code == 0, detail or f"驗證指令完成：{' '.join(command)}"
+
+
+async def create_preview_commit(
+    path: Path, files: list[str], base_commit: str, job_id: str
+) -> str:
+    code, output, error = await run_git(path, "add", "--", *files)
+    if code != 0:
+        raise RuntimeError(error or output or "無法暫存預覽檔案")
+    try:
+        code, tree, error = await run_git(path, "write-tree")
+        if code != 0:
+            raise RuntimeError(error or tree or "無法建立預覽 tree")
+        code, commit, error = await run_git(
+            path,
+            "commit-tree",
+            tree,
+            "-p",
+            base_commit,
+            "-m",
+            f"preview: {job_id}",
+        )
+        if code != 0:
+            raise RuntimeError(error or commit or "無法建立預覽 commit")
+        return commit
+    finally:
+        await run_git(path, "reset", "HEAD", "--", *files)
+
+
+async def push_preview(path: Path, cfg: dict, commit: str) -> tuple[bool, str]:
+    remote = cfg.get("git_remote", "origin")
+    branch = cfg.get("preview_branch", "preview")
+    code, output, error = await run_git(
+        path, "push", "--force", remote, f"{commit}:refs/heads/{branch}"
+    )
+    return code == 0, error or output
+
+
+def fetch_text(url: str) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": "N-Project-Preview-Check"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return response.read().decode("utf-8", errors="replace").strip()
+
+
+async def wait_for_preview(url: str, commit: str, attempts: int = 24) -> tuple[bool, str]:
+    if not url:
+        return False, "config.json 尚未設定 preview_url"
+    version_url = f"{url.rstrip('/')}/preview-version.txt"
+    last_error = ""
+    for _ in range(attempts):
+        try:
+            deployed_commit = await asyncio.to_thread(fetch_text, version_url)
+            if deployed_commit == commit:
+                return True, version_url
+            last_error = f"目前部署版本是 {deployed_commit[:8] or '未知'}"
+        except (OSError, urllib.error.URLError) as exc:
+            last_error = str(exc)
+        await asyncio.sleep(5)
+    return False, f"等待 GitHub Pages 部署逾時：{last_error}"
     stdout, stderr = await process.communicate()
     return (
         process.returncode,
@@ -271,7 +398,10 @@ async def status_command(ctx: commands.Context) -> None:
         f"類型：`{state.task_type or '無'}`\n"
         f"狀態：`{state.status}`\n"
         f"更新時間：`{state.updated_at or '無'}`\n"
-        f"目前/上次任務：{task}",
+        f"目前/上次任務：{task}\n"
+        f"預覽：{state.preview_url or '無'}\n"
+        f"預覽 commit：`{state.preview_commit or '無'}`\n"
+        f"最終 commit：`{state.final_commit or '無'}`",
         allowed_mentions=discord.AllowedMentions.none(),
     )
 
@@ -304,6 +434,13 @@ async def execute_task(
         task_type=task_type,
         task=task,
         last_result="執行中",
+        changed_files=[],
+        validation_result="",
+        base_commit="",
+        preview_commit="",
+        preview_url="",
+        file_hashes={},
+        final_commit="",
     )
     await ctx.send(
         f"📡 已連接 `{cfg.get('project_name', path.name)}`\n"
@@ -351,12 +488,69 @@ async def execute_task(
         if state.process.returncode == 0:
             files = await changed_files(path)
             if files:
-                update_state(state, status="waiting_approval", last_result=output)
-                link_text = validation_links(output)
+                base_commit = await current_commit(path)
+                update_state(state, status="validating", changed_files=files, base_commit=base_commit)
+                valid, validation_result = await validate_project(path, cfg)
+                if not valid:
+                    update_state(
+                        state,
+                        status="validation_failed",
+                        validation_result=validation_result,
+                        last_result=output,
+                    )
+                    await send_long(
+                        ctx,
+                        f"❌ Codex 修改完成，但自動驗證失敗\n\n{validation_result}\n\n{output}",
+                    )
+                    return
+
+                file_hashes = await hash_files(path, files)
+                preview_commit = await create_preview_commit(path, files, base_commit, job_id)
+                update_state(
+                    state,
+                    status="deploying_preview",
+                    validation_result=validation_result,
+                    preview_commit=preview_commit,
+                    file_hashes=file_hashes,
+                )
+                pushed, push_result = await push_preview(path, cfg, preview_commit)
+                if not pushed:
+                    update_state(state, status="deployment_failed", last_result=push_result)
+                    await send_long(
+                        ctx,
+                        f"❌ 驗證通過，但預覽分支推送失敗\n\n{push_result}\n\n"
+                        f"本機變更仍保留，未建立正式 commit。",
+                    )
+                    return
+
+                preview_url = cfg.get("preview_url", "")
+                deployed, deployment_result = await wait_for_preview(preview_url, preview_commit)
+                if not deployed:
+                    update_state(
+                        state,
+                        status="deployment_failed",
+                        last_result=deployment_result,
+                        preview_url=preview_url,
+                    )
+                    await send_long(
+                        ctx,
+                        f"❌ 預覽分支已推送，但無法確認 GitHub Pages 已部署相同版本\n\n"
+                        f"{deployment_result}\n\n預覽分支 commit：`{preview_commit[:8]}`",
+                    )
+                    return
+                update_state(
+                    state,
+                    status="waiting_approval",
+                    last_result=output,
+                    preview_url=preview_url,
+                )
+                link_text = validation_links("\n".join((output, preview_url)))
                 await send_long(
                     ctx,
-                    f"✅ Codex 任務完成，等待核准\n\n{output}\n\n"
+                    f"✅ Codex 任務完成並已推送預覽，等待核准\n\n{output}\n\n"
                     f"變更檔案：{', '.join(files)}\n"
+                    f"自動驗證：{validation_result}\n"
+                    f"預覽 commit：`{preview_commit[:8]}`\n"
                     f"{link_text}\n"
                     f"確認後請輸入 `{PREFIX}approve`。",
                 )
@@ -408,14 +602,40 @@ async def retry_command(ctx: commands.Context, *, note: str = "") -> None:
 async def approve_command(ctx: commands.Context) -> None:
     cfg, path = get_project(ctx.channel.id)
     state = states.setdefault(ctx.channel.id, ChannelState())
+    if state.status == "commit_pending_push" and state.final_commit:
+        branch = cfg.get("branch", "main")
+        remote = cfg.get("git_remote", "origin")
+        code, output, error = await run_git(path, "push", remote, f"HEAD:{branch}")
+        if code != 0:
+            await ctx.send(f"❌ Git push 仍然失敗：`{error or output}`")
+            return
+        update_state(state, status="committed", last_result=output)
+        await ctx.send(f"✅ commit `{state.final_commit[:8]}` 已推送至 `{remote}/{branch}`。")
+        return
+
     if state.status != "waiting_approval":
         await ctx.send("目前沒有等待核准的任務。")
         return
 
     files = await changed_files(path)
-    if not files:
-        update_state(state, status="completed", last_result="核准時未發現 Git 變更")
-        await ctx.send("沒有可提交的 Git 變更。")
+    if files != state.changed_files:
+        await ctx.send("⛔ 目前變更檔案與預覽版本不一致，請使用 `!retry` 重新產生預覽。")
+        return
+
+    head = await current_commit(path)
+    if head != state.base_commit:
+        await ctx.send("⛔ main 已在等待核准期間改變，請使用 `!retry` 重新產生預覽。")
+        return
+
+    hashes = await hash_files(path, files)
+    if hashes != state.file_hashes:
+        await ctx.send("⛔ 檔案內容與預覽版本不一致，請使用 `!retry` 重新產生預覽。")
+        return
+
+    valid, validation_result = await validate_project(path, cfg)
+    if not valid:
+        update_state(state, status="validation_failed", validation_result=validation_result)
+        await ctx.send(f"❌ 核准前重新驗證失敗：`{validation_result}`")
         return
 
     for key in ("user.name", "user.email"):
@@ -430,6 +650,17 @@ async def approve_command(ctx: commands.Context) -> None:
         await ctx.send(f"❌ Git 暫存失敗：`{error or output}`")
         return
 
+    code, tree, error = await run_git(path, "write-tree")
+    if code != 0:
+        await run_git(path, "reset", "HEAD", "--", *files)
+        await ctx.send(f"❌ 無法檢查正式提交內容：`{error or tree}`")
+        return
+    code, preview_tree, error = await run_git(path, "rev-parse", f"{state.preview_commit}^{{tree}}")
+    if code != 0 or tree != preview_tree:
+        await run_git(path, "reset", "HEAD", "--", *files)
+        await ctx.send("⛔ 正式提交內容與已部署的預覽版本不一致。")
+        return
+
     summary = " ".join(state.task.split())[:72] or state.job_id
     message = f"{state.task_type or 'change'}: {summary}"
     code, output, error = await run_git(path, "commit", "-m", message)
@@ -439,9 +670,33 @@ async def approve_command(ctx: commands.Context) -> None:
         return
 
     code, commit_hash, _ = await run_git(path, "rev-parse", "--short", "HEAD")
-    update_state(state, status="committed", last_result=output)
+    full_code, full_commit, _ = await run_git(path, "rev-parse", "HEAD")
+    final_commit = full_commit if full_code == 0 else commit_hash
+    remote = cfg.get("git_remote", "origin")
+    branch = cfg.get("branch", "main")
+    push_code, push_output, push_error = await run_git(path, "push", remote, f"HEAD:{branch}")
+    if push_code != 0:
+        update_state(
+            state,
+            status="commit_pending_push",
+            last_result=push_error or push_output,
+            validation_result=validation_result,
+            final_commit=final_commit,
+        )
+        await ctx.send(
+            f"⚠️ 已建立 commit `{commit_hash}`，但推送失敗：`{push_error or push_output}`\n"
+            f"修正連線或權限後再次輸入 `{PREFIX}approve` 重試推送。"
+        )
+        return
+    update_state(
+        state,
+        status="committed",
+        last_result=push_output or output,
+        validation_result=validation_result,
+        final_commit=final_commit,
+    )
     await ctx.send(
-        f"✅ 已核准並建立 commit `{commit_hash if code == 0 else 'unknown'}`\n"
+        f"✅ 已核准、建立並推送 commit `{commit_hash if code == 0 else 'unknown'}`\n"
         f"專案：`{cfg.get('project_name', path.name)}`"
     )
 

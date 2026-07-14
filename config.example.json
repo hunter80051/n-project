@@ -15,7 +15,11 @@
     "YOUR_DISCORD_CHANNEL_ID": {
       "project_name": "N-Project",
       "local_path": "C:\\Users\\hikar\\OneDrive\\文件\\N-Project (Vibe coding)",
-      "branch": "main"
+      "branch": "main",
+      "git_remote": "origin",
+      "preview_branch": "preview",
+      "preview_url": "https://hunter80051.github.io/n-project/",
+      "validation_command": ["python", "validate_project.py"]
     }
   }
 }

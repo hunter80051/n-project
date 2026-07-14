@@ -335,6 +335,33 @@ git branch task/job-20260713-001
 
 第一版可以先不用 CrewAI 或 LangGraph。等流程穩定後，再把狀態機升級成正式框架。
 
+### 目前完成狀態（2026-07-14）
+
+- [x] Discord Bot 支援 `!status`、`!build`、`!change`、`!fix`、`!retry`、`!approve`。
+- [x] `config.json` 完成單一 Discord channel 到本專案路徑的映射。
+- [x] 使用 `jobs.json` 保存 Job 狀態。
+- [x] Codex 可接收 Discord Job，並將限定檔案的產碼工作交給 Ollama Local Agent。
+- [x] Local Agent 禁止 Git、Shell、敏感檔案與 allowedFiles 以外的寫入。
+- [x] Codex 修改後執行專案驗證；驗證失敗不進入核准階段。
+- [x] 驗證通過後建立 preview commit，推送 `preview` branch 並由 GitHub Pages 部署。
+- [x] Discord 只在確認 Pages 部署的是相同 preview commit 後提供預覽網址。
+- [x] `!approve` 重新比對 base commit、變更檔案、檔案雜湊與 preview tree，再 commit 並推送 `main`。
+- [x] Job 保存變更檔案、驗證結果、預覽網址、preview commit 與最終 commit hash。
+
+目前使用情境是單一使用者與單一專案，因此第一版不實作多人任務佇列、每個 Job 的 task branch、CrewAI、LangGraph、Playwright 自動操作或 `!rollback last`。
+
+目前簡化狀態流程：
+
+```text
+running
+ -> validating
+ -> deploying_preview
+ -> waiting_approval
+ -> committed
+```
+
+錯誤狀態保留 `validation_failed`、`deployment_failed`、`commit_pending_push`、`failed` 與 `cancelled`。
+
 ## 15. 結論
 
 這套設計的重點是把風險集中管理：

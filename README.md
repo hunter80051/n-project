@@ -25,7 +25,7 @@ python discord_codex_bot.py
 - `!fix <任務描述>`：修復問題。
 - `!status`：查看綁定專案與目前狀態。
 - `!retry [補充說明]`：重跑上一個任務。
-- `!approve`：任務完成後需輸入此指令核准變更，才會建立 Git commit。
+- `!approve`：確認 GitHub Pages 預覽後核准；Bot 會再次驗證內容、建立 commit 並推送到 `main`。
 - `!cancel`：中止執行中的任務。
 - `!help`：顯示指令。
 
@@ -34,13 +34,32 @@ python discord_codex_bot.py
 - 僅接受 `config.json` 內的頻道與使用者。
 - 頻道只能操作預先綁定的專案路徑。
 - Codex 使用 `workspace-write` sandbox，不開啟危險的全權模式。
-- Bot 不會自動 commit 或 push；版本確認仍由人處理。
-- 新任務開始前要求乾淨的 Git 工作樹，任務完成後必須收到 `!approve` 才會 commit。
+- 新任務開始前要求乾淨的 Git 工作樹。
+- Codex 修改完成後先執行 `validation_command`，通過才建立受控 preview commit 並推送至 `preview` branch。
+- GitHub Pages 必須部署出相同 preview commit，Bot 才會提供預覽網址並進入 `waiting_approval`。
+- 收到 `!approve` 時會重新比對檔案、雜湊、base commit 與 preview tree；一致才 commit 並推送 `main`。
 - Codex 可將範圍明確的產碼工作交給本機 Ollama Local Agent；Local Agent 只能修改 Codex 指定的檔案，不能操作 Git 或 Shell。
 - Discord 會即時顯示 Codex 派工、Ollama 開始/完成，以及 Codex 審查驗證等協作里程碑；不顯示模型的隱藏推理內容。
 - AI 小組展示模式下，凡涉及程式碼檔案的新增或修改，Codex 必須至少派發一個受限子任務給 Ollama；純查詢與 Git 管理除外。
 - 一個頻道同時只執行一個 Codex 任務。
 - 任務狀態會保存至 `jobs.json`，Bot 重啟後仍可用 `!status` 查詢上次任務。
+
+## GitHub Pages 預覽
+
+此專案使用公開 repository 的 GitHub Pages。工作流程位於 `.github/workflows/deploy-pages.yml`，由 `preview` branch 觸發部署。
+
+頻道設定需要包含：
+
+```json
+{
+  "git_remote": "origin",
+  "preview_branch": "preview",
+  "preview_url": "https://hunter80051.github.io/n-project/",
+  "validation_command": ["python", "validate_project.py"]
+}
+```
+
+第一次使用前，需將 GitHub repository visibility 改為 Public，並在 repository 的 Settings → Pages 將 Source 設為 GitHub Actions。
 
 ## 開機自動執行（第二步）
 
