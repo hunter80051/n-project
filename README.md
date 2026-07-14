@@ -67,4 +67,6 @@ python discord_codex_bot.py
 
 ## 快速啟動
 
-先將 Token 設定為 Windows 使用者環境變數 `DISCORD_BOT_TOKEN`，再直接雙擊 `Start Discord Codex Bot.cmd`。啟動器會自動讀取環境變數並啟動 Bot，不會顯示或寫入 Token。
+先將 Token 設定為 Windows 使用者環境變數 `DISCORD_BOT_TOKEN`，再直接雙擊 `Start Discord Codex Bot.cmd`。啟動器會在背景啟動 Bot，不會在工作列保留視窗，也不會顯示或寫入 Token。重複執行時會偵測既有 Bot，不會啟動第二個 process。
+
+需要停止時，雙擊 `Stop Discord Codex Bot.cmd`。啟動、重複啟動與停止結果會記錄在 `bot-startup.log`。

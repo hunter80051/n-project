@@ -32,20 +32,29 @@ try {
         throw "DISCORD_BOT_TOKEN was not found in the Windows user environment variables."
     }
 
+    $runningBot = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '^python' -and
+            $_.CommandLine -like '*discord_codex_bot.py*'
+        } |
+        Select-Object -First 1
+    if ($runningBot) {
+        Write-StartupLog "Bot is already running with process ID $($runningBot.ProcessId)."
+        exit 0
+    }
+
     $env:DISCORD_BOT_TOKEN = $token
     $env:CODEX_DISCORD_CONFIG = $configFile
-    Set-Location -LiteralPath $projectDir
-
-    Write-Host "Starting Discord Codex Bot..." -ForegroundColor Cyan
-    Write-Host "Keep this window open. Press Ctrl+C or close it to stop the Bot." -ForegroundColor Yellow
-    Write-Host ""
-
-    Write-StartupLog "Starting Python Bot process."
-    & $python.Source $botFile
-    $exitCode = $LASTEXITCODE
-    Write-StartupLog "Python Bot process ended with exit code $exitCode."
+    $quotedBotFile = '"' + $botFile + '"'
+    $process = Start-Process `
+        -FilePath $python.Source `
+        -ArgumentList $quotedBotFile `
+        -WorkingDirectory $projectDir `
+        -WindowStyle Hidden `
+        -PassThru
+    Write-StartupLog "Bot started in background with process ID $($process.Id)."
     $env:DISCORD_BOT_TOKEN = $null
-    exit $exitCode
+    exit 0
 }
 catch {
     $env:DISCORD_BOT_TOKEN = $null
