@@ -40,8 +40,10 @@ function updateUi(snapshot) {
   } else {
     ui.updateHeader({
       sceneName: snapshot.dungeon.name,
-      floorLabel: `第 ${snapshot.floorNumber} / 3 層`,
-      progressLabel: snapshot.floorCleared ? '本層已清空，前往樓梯' : `剩餘敵人 ${snapshot.enemies.length}`,
+      floorLabel: `第 ${snapshot.floorNumber} / 3 層｜區域 ${snapshot.revealedGroup + 1}`,
+      progressLabel: snapshot.floorCleared
+        ? snapshot.floorNumber === 3 ? '傳送魔法陣已啟動' : '下層樓梯已解鎖'
+        : snapshot.enemies.length > 0 ? `目前區域敵人 ${snapshot.enemies.length}` : '前往房門探索下一區',
       canEnterDungeon: false
     });
   }

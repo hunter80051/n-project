@@ -1,4 +1,4 @@
-import { TILE } from './dungeon.js';
+import { DUNGEON_OBJECT, TILE } from './dungeon.js';
 import { getWorldTile, WORLD_OBJECT, WORLD_TERRAIN } from './world-map.js';
 
 const INK = '#392f35';
@@ -6,6 +6,9 @@ const CREAM = '#fff8e9';
 const WORLD_TILE_WIDTH = 64;
 const WORLD_TILE_HEIGHT = 32;
 const WORLD_TILE_DEPTH = 6;
+const DUNGEON_TILE_WIDTH = 54;
+const DUNGEON_TILE_HEIGHT = 27;
+const DUNGEON_TILE_DEPTH = 9;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class GameRenderer {
@@ -270,28 +273,45 @@ export class GameRenderer {
   renderDungeon(snapshot, timeMs) {
     const { floor } = snapshot;
     const ctx = this.context;
-    const tileSize = Math.floor(Math.min(this.canvas.width / floor.width, this.canvas.height / floor.height));
-    const offsetX = Math.floor((this.canvas.width - floor.width * tileSize) / 2);
-    const offsetY = Math.floor((this.canvas.height - floor.height * tileSize) / 2);
     const theme = snapshot.dungeon?.themeColor ?? '#6d8f72';
+    const camera = snapshot.partyPosition;
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2 + 38;
 
-    ctx.fillStyle = '#221e25';
+    const background = ctx.createRadialGradient(centerX, centerY, 80, centerX, centerY, 620);
+    background.addColorStop(0, '#27242c');
+    background.addColorStop(1, '#100f14');
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+    const visibleTiles = [];
     for (let y = 0; y < floor.height; y += 1) {
       for (let x = 0; x < floor.width; x += 1) {
-        this.drawTile(floor.tiles[y][x], x, y, tileSize, offsetX, offsetY, theme, snapshot.floorCleared, timeMs);
+        if (!this.isDungeonTileVisible(floor, x, y, snapshot.revealedGroup)) continue;
+        const screen = this.projectDungeonPoint(x, y, camera, centerX, centerY);
+        if (screen.x < -DUNGEON_TILE_WIDTH || screen.x > this.canvas.width + DUNGEON_TILE_WIDTH
+          || screen.y < -90 || screen.y > this.canvas.height + 70) continue;
+        visibleTiles.push({ x, y, screen, tile: floor.tiles[y][x] });
       }
     }
+    visibleTiles.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.x - b.x);
+    for (const entry of visibleTiles) this.drawDungeonGround(entry, floor, snapshot.revealedGroup, theme);
 
-    for (const enemy of snapshot.enemies) this.drawEnemy(enemy, tileSize, offsetX, offsetY, timeMs);
+    const visibleObjects = floor.objects
+      .filter((object) => object.revealGroup <= snapshot.revealedGroup)
+      .map((object) => ({
+        ...object,
+        screen: this.projectDungeonPoint(object.x, object.y, camera, centerX, centerY)
+      }))
+      .sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.x - b.x);
+    for (const object of visibleObjects) this.drawDungeonObject(object, snapshot, theme, timeMs);
 
-    const partyOffsets = [[-.48, -.38], [.42, -.38], [-.48, .48], [.42, .48]];
+    for (const enemy of snapshot.enemies) this.drawDungeonEnemy(enemy, camera, centerX, centerY, timeMs);
+
+    const partyOffsets = [[-22, -10], [19, -10], [-15, 18], [17, 18]];
     snapshot.party.forEach((member, index) => {
       const [dx, dy] = partyOffsets[index];
-      const x = offsetX + (snapshot.partyPosition.x + 0.5 + dx) * tileSize;
-      const y = offsetY + (snapshot.partyPosition.y + 0.5 + dy) * tileSize;
-      this.drawCharacter(member, x, y, Math.max(.42, tileSize / 25), timeMs);
+      this.drawCharacter(member, centerX + dx, centerY + dy, .72, timeMs);
     });
 
     this.drawDungeonHud(snapshot);
@@ -299,49 +319,208 @@ export class GameRenderer {
     if (boss) this.drawBossBar(boss);
   }
 
-  drawTile(tile, gridX, gridY, size, offsetX, offsetY, theme, floorCleared, timeMs) {
+  projectDungeonPoint(x, y, camera, centerX, centerY) {
+    const dx = x - camera.x;
+    const dy = y - camera.y;
+    return {
+      x: centerX + (dx - dy) * DUNGEON_TILE_WIDTH / 2,
+      y: centerY + (dx + dy) * DUNGEON_TILE_HEIGHT / 2
+    };
+  }
+
+  isDungeonTileVisible(floor, x, y, revealedGroup) {
+    if (x < 0 || y < 0 || x >= floor.width || y >= floor.height) return false;
+    return floor.tiles[y][x] !== TILE.WALL
+      && floor.groups[y][x] >= 0
+      && floor.groups[y][x] <= revealedGroup;
+  }
+
+  shadeColor(hex, amount) {
+    const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.slice(1) : '6d8f72';
+    const value = Number.parseInt(normalized, 16);
+    const channel = (shift) => clamp(((value >> shift) & 255) + amount, 0, 255);
+    return `rgb(${channel(16)} ${channel(8)} ${channel(0)})`;
+  }
+
+  drawDungeonGround(entry, floor, revealedGroup, theme) {
     const ctx = this.context;
-    const x = offsetX + gridX * size;
-    const y = offsetY + gridY * size;
-    if (tile === TILE.WALL) {
-      ctx.fillStyle = '#312b34';
-      ctx.fillRect(x, y, size, size);
-      if ((gridX + gridY) % 2 === 0) {
-        ctx.fillStyle = '#3e3641';
-        ctx.fillRect(x + 2, y + 2, size - 3, Math.max(2, size * .18));
-      }
-      return;
+    const { x, y, screen } = entry;
+    const halfWidth = DUNGEON_TILE_WIDTH / 2;
+    const halfHeight = DUNGEON_TILE_HEIGHT / 2;
+    const eastOpen = !this.isDungeonTileVisible(floor, x + 1, y, revealedGroup);
+    const southOpen = !this.isDungeonTileVisible(floor, x, y + 1, revealedGroup);
+
+    if (southOpen) {
+      ctx.fillStyle = this.shadeColor(theme, -48);
+      ctx.beginPath();
+      ctx.moveTo(screen.x, screen.y + halfHeight);
+      ctx.lineTo(screen.x - halfWidth, screen.y);
+      ctx.lineTo(screen.x - halfWidth, screen.y + DUNGEON_TILE_DEPTH);
+      ctx.lineTo(screen.x, screen.y + halfHeight + DUNGEON_TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (eastOpen) {
+      ctx.fillStyle = this.shadeColor(theme, -35);
+      ctx.beginPath();
+      ctx.moveTo(screen.x + halfWidth, screen.y);
+      ctx.lineTo(screen.x, screen.y + halfHeight);
+      ctx.lineTo(screen.x, screen.y + halfHeight + DUNGEON_TILE_DEPTH);
+      ctx.lineTo(screen.x + halfWidth, screen.y + DUNGEON_TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    ctx.globalAlpha = (gridX + gridY) % 2 === 0 ? .88 : .74;
-    ctx.fillStyle = theme;
-    ctx.fillRect(x, y, size, size);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgb(57 47 53 / 16%)';
+    ctx.fillStyle = this.shadeColor(theme, ((x + y) % 2 === 0 ? 16 : 9));
+    ctx.beginPath();
+    ctx.moveTo(screen.x, screen.y - halfHeight);
+    ctx.lineTo(screen.x + halfWidth, screen.y);
+    ctx.lineTo(screen.x, screen.y + halfHeight);
+    ctx.lineTo(screen.x - halfWidth, screen.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgb(28 24 31 / 24%)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x + .5, y + .5, size - 1, size - 1);
+    ctx.stroke();
+  }
 
-    if (tile === TILE.ENTRANCE) {
-      ctx.fillStyle = '#b9d9ef';
-      ctx.fillRect(x + size * .2, y + size * .2, size * .6, size * .6);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + size * .2, y + size * .2, size * .6, size * .6);
-    } else if (tile === TILE.STAIRS) {
-      const pulse = floorCleared ? 0.75 + Math.sin(timeMs / 160) * .2 : .35;
-      ctx.globalAlpha = pulse;
-      ctx.fillStyle = floorCleared ? '#f4d979' : '#6a6068';
-      for (let step = 0; step < 3; step += 1) {
-        ctx.fillRect(x + size * (.16 + step * .1), y + size * (.2 + step * .2), size * (.68 - step * .2), size * .15);
-      }
-      ctx.globalAlpha = 1;
-      if (!floorCleared) {
-        ctx.fillStyle = INK;
-        ctx.font = `bold ${Math.max(11, size * .58)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText('×', x + size / 2, y + size * .68);
-      }
+  dungeonEdgePoints(edge) {
+    const halfWidth = DUNGEON_TILE_WIDTH / 2;
+    const halfHeight = DUNGEON_TILE_HEIGHT / 2;
+    if (edge === 'west') return [[-halfWidth, 0], [0, -halfHeight]];
+    if (edge === 'east') return [[halfWidth, 0], [0, halfHeight]];
+    if (edge === 'north') return [[0, -halfHeight], [halfWidth, 0]];
+    return [[0, halfHeight], [-halfWidth, 0]];
+  }
+
+  directionToEdge(direction) {
+    if (direction.x < 0) return 'west';
+    if (direction.x > 0) return 'east';
+    if (direction.y < 0) return 'north';
+    return 'south';
+  }
+
+  drawDungeonObject(object, snapshot, theme, timeMs) {
+    const ctx = this.context;
+    ctx.save();
+    ctx.translate(Math.round(object.screen.x), Math.round(object.screen.y));
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (object.type === DUNGEON_OBJECT.WALL) this.drawDungeonWall(object, theme);
+    else if (object.type === DUNGEON_OBJECT.DOOR) {
+      this.drawDungeonDoor(object, snapshot.revealedGroup >= object.targetGroup, theme);
+    } else if (object.type === DUNGEON_OBJECT.ENTRANCE_STAIRS) this.drawEntranceStairs();
+    else if (object.type === DUNGEON_OBJECT.STAIRS_DOWN) this.drawStairsDown(snapshot.floorCleared, timeMs);
+    else if (object.type === DUNGEON_OBJECT.EXIT_PORTAL) this.drawExitPortal(snapshot.floorCleared, timeMs);
+    ctx.restore();
+  }
+
+  drawDungeonWall(object, theme) {
+    const ctx = this.context;
+    const [start, end] = this.dungeonEdgePoints(object.edge);
+    const frontEdge = object.edge === 'south' || object.edge === 'east';
+    const height = frontEdge ? 19 : 34;
+    ctx.fillStyle = this.shadeColor(theme, object.orientation === 'axisX' ? -54 : -42);
+    ctx.strokeStyle = '#2f2931';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(start[0], start[1]);
+    ctx.lineTo(end[0], end[1]);
+    ctx.lineTo(end[0], end[1] - height);
+    ctx.lineTo(start[0], start[1] - height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgb(255 248 233 / 20%)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(start[0], start[1] - height * .54);
+    ctx.lineTo(end[0], end[1] - height * .54);
+    ctx.stroke();
+  }
+
+  drawDungeonDoor(object, open, theme) {
+    const ctx = this.context;
+    const edge = this.directionToEdge(object.direction);
+    const [start, end] = this.dungeonEdgePoints(edge);
+    const height = 31;
+    const widthX = end[0] - start[0];
+    const widthY = end[1] - start[1];
+    ctx.strokeStyle = '#302a32';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(start[0], start[1]);
+    ctx.lineTo(start[0], start[1] - height);
+    ctx.lineTo(end[0], end[1] - height);
+    ctx.lineTo(end[0], end[1]);
+    ctx.stroke();
+    ctx.strokeStyle = this.shadeColor(theme, -18);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (!open) {
+      ctx.fillStyle = '#4d4249';
+      ctx.beginPath();
+      ctx.moveTo(start[0] + widthX * .16, start[1] + widthY * .16);
+      ctx.lineTo(start[0] + widthX * .16, start[1] + widthY * .16 - height + 4);
+      ctx.lineTo(end[0] - widthX * .16, end[1] - widthY * .16 - height + 4);
+      ctx.lineTo(end[0] - widthX * .16, end[1] - widthY * .16);
+      ctx.closePath();
+      ctx.fill();
     }
+  }
+
+  drawEntranceStairs() {
+    const ctx = this.context;
+    ctx.strokeStyle = '#302a32';
+    ctx.lineWidth = 1.7;
+    for (let step = 0; step < 3; step += 1) {
+      const width = 30 - step * 7;
+      const y = 5 - step * 7;
+      ctx.fillStyle = step === 2 ? '#b8c4d2' : '#8794a2';
+      ctx.beginPath();
+      ctx.moveTo(0, y - 7);
+      ctx.lineTo(width / 2, y);
+      ctx.lineTo(0, y + 7);
+      ctx.lineTo(-width / 2, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  drawStairsDown(active, timeMs) {
+    const ctx = this.context;
+    const pulse = active ? .72 + Math.sin(timeMs / 180) * .18 : .36;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#211e25';
+    ctx.strokeStyle = active ? '#f5dc82' : '#766b75';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 20, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    for (let step = 0; step < 3; step += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-13 + step * 3, -4 + step * 3);
+      ctx.lineTo(13 - step * 3, -4 + step * 3);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  drawExitPortal(active, timeMs) {
+    const ctx = this.context;
+    const pulse = active ? 1 + Math.sin(timeMs / 190) * .1 : .75;
+    ctx.scale(pulse, pulse * .56);
+    ctx.globalAlpha = active ? .9 : .28;
+    for (let ring = 0; ring < 3; ring += 1) {
+      ctx.strokeStyle = ring === 1 ? '#f7e68b' : '#9dddf0';
+      ctx.lineWidth = 4 - ring;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 - ring * 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   drawCharacter(member, x, y, scale, timeMs) {
@@ -416,12 +595,13 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  drawEnemy(enemy, tileSize, offsetX, offsetY, timeMs) {
+  drawDungeonEnemy(enemy, camera, centerX, centerY, timeMs) {
     const ctx = this.context;
     const attackFrame = enemy.attackingMs > 0 && Math.floor(timeMs / 90) % 2 === 1;
-    const x = offsetX + (enemy.x + .5) * tileSize + (attackFrame ? -3 : 0);
-    const y = offsetY + (enemy.y + .5) * tileSize;
-    const radius = enemy.isBoss ? tileSize * .72 : tileSize * .36;
+    const screen = this.projectDungeonPoint(enemy.x, enemy.y, camera, centerX, centerY);
+    const x = screen.x + (attackFrame ? -3 : 0);
+    const y = screen.y;
+    const radius = enemy.isBoss ? 28 : 14;
 
     ctx.save();
     ctx.translate(x, y);
@@ -444,7 +624,7 @@ export class GameRenderer {
     ctx.fillRect(radius * .28, -radius * .28, Math.max(2, radius * .13), Math.max(2, radius * .13));
     ctx.restore();
 
-    if (!enemy.isBoss) this.drawHealthBar(x - tileSize * .38, y - tileSize * .62, tileSize * .76, 5, enemy.hp / enemy.maxHp);
+    if (!enemy.isBoss) this.drawHealthBar(x - 17, y - 25, 34, 5, enemy.hp / enemy.maxHp);
   }
 
   drawHealthBar(x, y, width, height, ratio) {
@@ -473,13 +653,19 @@ export class GameRenderer {
   drawDungeonHud(snapshot) {
     const ctx = this.context;
     ctx.fillStyle = 'rgb(34 30 37 / 80%)';
-    this.roundRect(12, 12, 190, 54, 10, true, false);
+    this.roundRect(12, 12, 260, 58, 10, true, false);
     ctx.fillStyle = CREAM;
     ctx.textAlign = 'left';
     ctx.font = 'bold 15px Trebuchet MS';
-    ctx.fillText(`第 ${snapshot.floorNumber} / 3 層`, 26, 35);
+    ctx.fillText(`第 ${snapshot.floorNumber} / 3 層　區域 ${snapshot.revealedGroup + 1} / ${snapshot.floor.maxRevealGroup + 1}`, 26, 35);
     ctx.font = '13px Trebuchet MS';
-    ctx.fillText(snapshot.floorCleared ? '樓梯已解鎖' : `剩餘敵人 ${snapshot.enemies.length}`, 26, 56);
+    const exitReady = snapshot.floorNumber === 3 ? '傳送魔法陣已啟動' : '下層樓梯已解鎖';
+    const message = snapshot.floorCleared
+      ? exitReady
+      : snapshot.enemies.length > 0
+        ? `目前區域敵人 ${snapshot.enemies.length}`
+        : snapshot.revealedGroup < snapshot.floor.maxRevealGroup ? '前往房門探索下一區' : '傳送處尚未啟動';
+    ctx.fillText(message, 26, 57);
   }
 
   roundRect(x, y, width, height, radius, fill, stroke) {

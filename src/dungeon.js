@@ -5,6 +5,14 @@ export const TILE = Object.freeze({
   STAIRS: 3
 });
 
+export const DUNGEON_OBJECT = Object.freeze({
+  WALL: 'wall',
+  DOOR: 'door',
+  ENTRANCE_STAIRS: 'entranceStairs',
+  STAIRS_DOWN: 'stairsDown',
+  EXIT_PORTAL: 'exitPortal'
+});
+
 export function createSeededRandom(seed) {
   let state = Number(seed) >>> 0;
   return function random() {
@@ -42,81 +50,164 @@ function carveRoom(tiles, room) {
   }
 }
 
-function carveHorizontal(tiles, fromX, toX, y) {
-  const start = Math.min(fromX, toX);
-  const end = Math.max(fromX, toX);
-  for (let x = start; x <= end; x += 1) tiles[y][x] = TILE.FLOOR;
-}
-
-function carveVertical(tiles, fromY, toY, x) {
-  const start = Math.min(fromY, toY);
-  const end = Math.max(fromY, toY);
-  for (let y = start; y <= end; y += 1) tiles[y][x] = TILE.FLOOR;
-}
-
-function carveCorridor(tiles, from, to, random) {
-  if (random() < 0.5) {
-    carveHorizontal(tiles, from.x, to.x, from.y);
-    carveVertical(tiles, from.y, to.y, to.x);
-  } else {
-    carveVertical(tiles, from.y, to.y, from.x);
-    carveHorizontal(tiles, from.x, to.x, to.y);
+function orderRoomsAsRoute(rooms) {
+  const ordered = [rooms[0]];
+  const remaining = rooms.slice(1);
+  while (remaining.length > 0) {
+    const from = roomCenter(ordered.at(-1));
+    let nearestIndex = 0;
+    let nearestDistance = Infinity;
+    remaining.forEach((room, index) => {
+      const to = roomCenter(room);
+      const distance = Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
+      if (distance < nearestDistance) {
+        nearestIndex = index;
+        nearestDistance = distance;
+      }
+    });
+    ordered.push(remaining.splice(nearestIndex, 1)[0]);
   }
+  return ordered;
 }
 
-function connectRooms(tiles, rooms, random) {
-  const connected = new Set([0]);
-  const edges = [];
+function carveCorridorPath(tiles, from, to, random) {
+  const points = [];
+  let x = from.x;
+  let y = from.y;
+  const addPoint = () => {
+    tiles[y][x] = TILE.FLOOR;
+    if (points.at(-1)?.x !== x || points.at(-1)?.y !== y) points.push({ x, y });
+  };
+  const moveX = () => {
+    while (x !== to.x) {
+      x += Math.sign(to.x - x);
+      addPoint();
+    }
+  };
+  const moveY = () => {
+    while (y !== to.y) {
+      y += Math.sign(to.y - y);
+      addPoint();
+    }
+  };
+  addPoint();
+  if (random() < 0.5) {
+    moveX();
+    moveY();
+  } else {
+    moveY();
+    moveX();
+  }
+  return points;
+}
 
-  while (connected.size < rooms.length) {
-    let best = null;
-    for (const fromIndex of connected) {
-      const from = roomCenter(rooms[fromIndex]);
-      for (let toIndex = 0; toIndex < rooms.length; toIndex += 1) {
-        if (connected.has(toIndex)) continue;
-        const to = roomCenter(rooms[toIndex]);
-        const distance = Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
-        if (!best || distance < best.distance) best = { fromIndex, toIndex, from, to, distance };
+function pointInRoom(point, room) {
+  return point.x >= room.x && point.x < room.x + room.width
+    && point.y >= room.y && point.y < room.y + room.height;
+}
+
+function findDoor(corridor, fromRoom, targetGroup) {
+  for (let index = 1; index < corridor.length; index += 1) {
+    if (pointInRoom(corridor[index], fromRoom)) continue;
+    const inside = corridor[index - 1];
+    const outside = corridor[index];
+    const dx = outside.x - inside.x;
+    const dy = outside.y - inside.y;
+    return {
+      type: DUNGEON_OBJECT.DOOR,
+      x: inside.x,
+      y: inside.y,
+      direction: { x: dx, y: dy },
+      orientation: dx !== 0 ? 'axisX' : 'axisY',
+      revealGroup: targetGroup - 1,
+      targetGroup,
+      trigger: { ...inside }
+    };
+  }
+  const fallback = corridor[Math.max(0, corridor.length - 2)];
+  return {
+    type: DUNGEON_OBJECT.DOOR,
+    x: fallback.x,
+    y: fallback.y,
+    direction: { x: 1, y: 0 },
+    orientation: 'axisX',
+    revealGroup: targetGroup - 1,
+    targetGroup,
+    trigger: { ...fallback }
+  };
+}
+
+function assignRevealGroups(tiles, rooms, corridors) {
+  const groups = tiles.map((row) => row.map(() => -1));
+  rooms.forEach((room, group) => {
+    for (let y = room.y; y < room.y + room.height; y += 1) {
+      for (let x = room.x; x < room.x + room.width; x += 1) groups[y][x] = group;
+    }
+  });
+  corridors.forEach((corridor, index) => {
+    const group = index + 1;
+    for (const point of corridor) {
+      if (groups[point.y][point.x] < 0 || groups[point.y][point.x] > group) groups[point.y][point.x] = group;
+    }
+  });
+  return groups;
+}
+
+function boundaryObjects(tiles, groups) {
+  const objects = [];
+  const edges = [
+    { dx: -1, dy: 0, edge: 'west', orientation: 'axisY' },
+    { dx: 1, dy: 0, edge: 'east', orientation: 'axisY' },
+    { dx: 0, dy: -1, edge: 'north', orientation: 'axisX' },
+    { dx: 0, dy: 1, edge: 'south', orientation: 'axisX' }
+  ];
+  for (let y = 0; y < tiles.length; y += 1) {
+    for (let x = 0; x < tiles[y].length; x += 1) {
+      if (!isWalkable(tiles[y][x])) continue;
+      for (const edge of edges) {
+        const neighborX = x + edge.dx;
+        const neighborY = y + edge.dy;
+        const neighbor = tiles[neighborY]?.[neighborX] ?? TILE.WALL;
+        if (isWalkable(neighbor)) continue;
+        objects.push({
+          type: DUNGEON_OBJECT.WALL,
+          x,
+          y,
+          edge: edge.edge,
+          orientation: edge.orientation,
+          revealGroup: groups[y][x]
+        });
       }
     }
-    carveCorridor(tiles, best.from, best.to, random);
-    edges.push([best.fromIndex, best.toIndex]);
-    connected.add(best.toIndex);
   }
-
-  const extraCount = randomInt(random, 0, Math.min(2, Math.max(0, rooms.length - 2)));
-  for (let extra = 0; extra < extraCount; extra += 1) {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const fromIndex = randomInt(random, 0, rooms.length - 1);
-      const toIndex = randomInt(random, 0, rooms.length - 1);
-      if (fromIndex === toIndex) continue;
-      const exists = edges.some(([a, b]) =>
-        (a === fromIndex && b === toIndex) || (a === toIndex && b === fromIndex));
-      if (exists) continue;
-      carveCorridor(tiles, roomCenter(rooms[fromIndex]), roomCenter(rooms[toIndex]), random);
-      edges.push([fromIndex, toIndex]);
-      break;
-    }
-  }
-
-  return edges;
+  return objects;
 }
 
-function collectSpawnPoints(tiles, count, entrance, stairs, random) {
+function collectRoomSpawnPoints(rooms, count, entrance, stairs, random) {
   const blocked = new Set([pointKey(entrance), pointKey(stairs)]);
-  const candidates = [];
-  for (let y = 1; y < tiles.length - 1; y += 1) {
-    for (let x = 1; x < tiles[y].length - 1; x += 1) {
-      if (!isWalkable(tiles[y][x]) || blocked.has(`${x},${y}`)) continue;
-      if (Math.abs(x - entrance.x) + Math.abs(y - entrance.y) < 5) continue;
-      candidates.push({ x, y });
+  const candidatesByGroup = rooms.map((room, revealGroup) => {
+    const candidates = [];
+    for (let y = room.y + 1; y < room.y + room.height - 1; y += 1) {
+      for (let x = room.x + 1; x < room.x + room.width - 1; x += 1) {
+        if (!blocked.has(`${x},${y}`)) candidates.push({ x, y, revealGroup });
+      }
     }
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(random, 0, index);
+      [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+    }
+    return candidates;
+  });
+  const result = [];
+  for (let index = 0; index < count; index += 1) {
+    const group = index % rooms.length;
+    const point = candidatesByGroup[group].pop();
+    if (point) result.push(point);
   }
-  for (let index = candidates.length - 1; index > 0; index -= 1) {
-    const swapIndex = randomInt(random, 0, index);
-    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  for (const candidates of candidatesByGroup) {
+    while (result.length < count && candidates.length > 0) result.push(candidates.pop());
   }
-  return candidates.slice(0, Math.min(count, candidates.length));
+  return result;
 }
 
 function tryGenerateDungeon(options, seed) {
@@ -149,24 +240,57 @@ function tryGenerateDungeon(options, seed) {
   }
 
   if (rooms.length < roomCountMin) return null;
-  const edges = connectRooms(tiles, rooms, random);
-  const entrance = roomCenter(rooms[0]);
-  const stairsRoom = rooms.reduce((farthest, room) => {
-    const center = roomCenter(room);
-    const distance = Math.abs(center.x - entrance.x) + Math.abs(center.y - entrance.y);
-    return distance > farthest.distance ? { room, distance } : farthest;
-  }, { room: rooms[rooms.length - 1], distance: -1 }).room;
-  const stairs = roomCenter(stairsRoom);
+  const orderedRooms = orderRoomsAsRoute(rooms).map((room, revealGroup) => ({ ...room, revealGroup }));
+  const corridors = [];
+  const doors = [];
+  const edges = [];
+  for (let index = 1; index < orderedRooms.length; index += 1) {
+    const corridor = carveCorridorPath(
+      tiles,
+      roomCenter(orderedRooms[index - 1]),
+      roomCenter(orderedRooms[index]),
+      random
+    );
+    corridors.push(corridor);
+    doors.push(findDoor(corridor, orderedRooms[index - 1], index));
+    edges.push([index - 1, index]);
+  }
+  const groups = assignRevealGroups(tiles, orderedRooms, corridors);
+  const entrance = roomCenter(orderedRooms[0]);
+  const stairs = roomCenter(orderedRooms.at(-1));
   tiles[entrance.y][entrance.x] = TILE.ENTRANCE;
   tiles[stairs.y][stairs.x] = TILE.STAIRS;
-  const spawnPoints = collectSpawnPoints(tiles, enemyCount, entrance, stairs, random);
+  const spawnPoints = collectRoomSpawnPoints(orderedRooms, enemyCount, entrance, stairs, random);
+  const objects = [
+    ...boundaryObjects(tiles, groups),
+    ...doors,
+    {
+      type: DUNGEON_OBJECT.ENTRANCE_STAIRS,
+      x: entrance.x,
+      y: entrance.y,
+      orientation: 'axisX',
+      revealGroup: 0
+    },
+    {
+      type: DUNGEON_OBJECT.STAIRS_DOWN,
+      x: stairs.x,
+      y: stairs.y,
+      orientation: 'axisY',
+      revealGroup: orderedRooms.length - 1
+    }
+  ];
 
   return {
     width,
     height,
     tiles,
-    rooms,
+    rooms: orderedRooms,
     edges,
+    corridors,
+    groups,
+    objects,
+    doorTriggers: doors.map((door) => ({ ...door.trigger, targetGroup: door.targetGroup })),
+    maxRevealGroup: orderedRooms.length - 1,
     entrance,
     stairs,
     spawnPoints,
@@ -192,6 +316,7 @@ export function generateBossFloor(options = {}) {
   const tiles = createTiles(width, height);
   const room = { x: 4, y: 3, width: width - 8, height: height - 6 };
   carveRoom(tiles, room);
+  room.revealGroup = 0;
 
   const entrance = { x: room.x + 1, y: room.y + Math.floor(room.height / 2) };
   const stairs = { x: room.x + room.width - 2, y: entrance.y };
@@ -199,11 +324,29 @@ export function generateBossFloor(options = {}) {
   tiles[entrance.y][entrance.x] = TILE.ENTRANCE;
   tiles[stairs.y][stairs.x] = TILE.STAIRS;
 
-  const spawnPoints = [bossPoint];
+  const groups = assignRevealGroups(tiles, [room], []);
+  const spawnPoints = [{ ...bossPoint, revealGroup: 0 }];
   if (enemyCount > 1) {
     const random = createSeededRandom(seed);
-    spawnPoints.push(...collectSpawnPoints(tiles, enemyCount - 1, entrance, stairs, random));
+    spawnPoints.push(...collectRoomSpawnPoints([room], enemyCount - 1, entrance, stairs, random));
   }
+  const objects = [
+    ...boundaryObjects(tiles, groups),
+    {
+      type: DUNGEON_OBJECT.ENTRANCE_STAIRS,
+      x: entrance.x,
+      y: entrance.y,
+      orientation: 'axisX',
+      revealGroup: 0
+    },
+    {
+      type: DUNGEON_OBJECT.EXIT_PORTAL,
+      x: stairs.x,
+      y: stairs.y,
+      orientation: 'axisY',
+      revealGroup: 0
+    }
+  ];
 
   return {
     width,
@@ -211,6 +354,11 @@ export function generateBossFloor(options = {}) {
     tiles,
     rooms: [room],
     edges: [],
+    corridors: [],
+    groups,
+    objects,
+    doorTriggers: [],
+    maxRevealGroup: 0,
     entrance,
     stairs,
     spawnPoints: spawnPoints.slice(0, enemyCount),
@@ -223,7 +371,7 @@ export function isWalkable(tile) {
   return tile === TILE.FLOOR || tile === TILE.ENTRANCE || tile === TILE.STAIRS;
 }
 
-export function findPath(tiles, start, goal) {
+export function findPath(tiles, start, goal, visibility = null) {
   if (start.x === goal.x && start.y === goal.y) return [];
   const width = tiles[0]?.length ?? 0;
   const height = tiles.length;
@@ -241,6 +389,7 @@ export function findPath(tiles, start, goal) {
       if (next.x < 0 || next.y < 0 || next.x >= width || next.y >= height) continue;
       const key = pointKey(next);
       if (previous.has(key) || !isWalkable(tiles[next.y][next.x])) continue;
+      if (visibility?.groups && visibility.groups[next.y][next.x] > visibility.maxGroup) continue;
       previous.set(key, point);
       queue.push(next);
     }

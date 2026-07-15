@@ -36,6 +36,7 @@ export class GameSimulation {
     this.partyPosition = { x: 6, y: 11 };
     this.partyNavigation = { goal: '', path: [] };
     this.floorCleared = false;
+    this.revealedGroup = 0;
     this.floorTransitionMs = 0;
     this.manualPaused = false;
     this.paused = false;
@@ -111,6 +112,7 @@ export class GameSimulation {
     this.partyPosition = { ...this.floor.entrance };
     this.partyNavigation = { goal: '', path: [] };
     this.floorCleared = false;
+    this.revealedGroup = 0;
     this.floorTransitionMs = 0;
     this.enemies = this.createFloorEnemies();
     this.party.forEach((member) => {
@@ -144,6 +146,7 @@ export class GameSimulation {
         defense: config.defense * difficulty,
         cooldownMs: 400 + index * 60,
         attackingMs: 0,
+        revealGroup: point.revealGroup ?? 0,
         navigation: { goal: '', path: [] }
       };
     });
@@ -185,6 +188,7 @@ export class GameSimulation {
     this.updateNavigation(dtSeconds);
     this.updateCombat(safeDtMs);
     this.removeDefeatedEnemies();
+    this.updateDungeonReveal();
     this.updateFloorCompletion(safeDtMs);
   }
 
@@ -202,7 +206,7 @@ export class GameSimulation {
   }
 
   updateNavigation(dtSeconds) {
-    const livingEnemies = this.enemies.filter((enemy) => enemy.hp > 0);
+    const livingEnemies = this.enemies.filter((enemy) => enemy.hp > 0 && enemy.revealGroup <= this.revealedGroup);
     const target = livingEnemies.reduce((closest, enemy) => {
       const currentDistance = distance(this.partyPosition, enemy);
       return !closest || currentDistance < closest.distance ? { enemy, distance: currentDistance } : closest;
@@ -216,6 +220,17 @@ export class GameSimulation {
         dtSeconds,
         this.partyNavigation
       );
+    } else if (!target && this.revealedGroup < this.floor.maxRevealGroup) {
+      const nextDoor = this.floor.doorTriggers.find((door) => door.targetGroup === this.revealedGroup + 1);
+      if (nextDoor) {
+        this.moveActor(
+          this.partyPosition,
+          nextDoor,
+          this.data.balance.partyMoveSpeed,
+          dtSeconds,
+          this.partyNavigation
+        );
+      }
     } else if (!target && this.floorCleared) {
       this.moveActor(
         this.partyPosition,
@@ -237,10 +252,19 @@ export class GameSimulation {
   moveActor(actor, goal, speed, dtSeconds, navigation) {
     const roundedStart = { x: Math.round(actor.x), y: Math.round(actor.y) };
     const roundedGoal = { x: Math.round(goal.x), y: Math.round(goal.y) };
+    if (roundedStart.x === roundedGoal.x && roundedStart.y === roundedGoal.y) {
+      actor.x = roundedGoal.x;
+      actor.y = roundedGoal.y;
+      navigation.path = [];
+      return;
+    }
     const goalKey = positionKey(roundedGoal);
     if (navigation.goal !== goalKey || navigation.path.length === 0) {
       navigation.goal = goalKey;
-      navigation.path = findPath(this.floor.tiles, roundedStart, roundedGoal);
+      navigation.path = findPath(this.floor.tiles, roundedStart, roundedGoal, {
+        groups: this.floor.groups,
+        maxGroup: this.revealedGroup
+      });
     }
     if (navigation.path.length === 0) return;
 
@@ -260,7 +284,7 @@ export class GameSimulation {
   }
 
   updateCombat(dtMs) {
-    const livingEnemies = this.enemies.filter((enemy) => enemy.hp > 0);
+    const livingEnemies = this.enemies.filter((enemy) => enemy.hp > 0 && enemy.revealGroup <= this.revealedGroup);
     if (livingEnemies.length === 0) return;
 
     for (const member of this.party) {
@@ -510,7 +534,9 @@ export class GameSimulation {
     if (this.scene !== 'dungeon' || this.paused) return false;
     const scroll = this.scrolls.find((candidate) => candidate.scrollId === scrollId);
     if (!scroll || scroll.quantity <= 0) return false;
-    const targets = this.enemies.filter((enemy) => enemy.hp > 0).sort((a, b) => distance(a, this.partyPosition) - distance(b, this.partyPosition));
+    const targets = this.enemies
+      .filter((enemy) => enemy.hp > 0 && enemy.revealGroup <= this.revealedGroup)
+      .sort((a, b) => distance(a, this.partyPosition) - distance(b, this.partyPosition));
     if (scroll.effectType !== 'partyHeal' && targets.length === 0) return false;
 
     scroll.quantity -= 1;
@@ -527,7 +553,7 @@ export class GameSimulation {
   }
 
   updateFloorCompletion(dtMs) {
-    if (!this.floorCleared && this.enemies.length === 0) {
+    if (!this.floorCleared && this.revealedGroup >= this.floor.maxRevealGroup && this.enemies.length === 0) {
       this.floorCleared = true;
       this.partyNavigation = { goal: '', path: [] };
       this.emitEvent(this.floorNumber === 3 ? 'Boss 已擊敗，出口開啟' : '本層已清空，樓梯解鎖');
@@ -538,6 +564,18 @@ export class GameSimulation {
       this.floorTransitionMs -= dtMs;
       if (this.floorTransitionMs <= 0) this.advanceFloor();
     }
+  }
+
+  updateDungeonReveal() {
+    if (this.revealedGroup >= this.floor.maxRevealGroup) return;
+    const hasActiveEnemy = this.enemies.some((enemy) => enemy.hp > 0 && enemy.revealGroup <= this.revealedGroup);
+    if (hasActiveEnemy) return;
+    const nextGroup = this.revealedGroup + 1;
+    const door = this.floor.doorTriggers.find((trigger) => trigger.targetGroup === nextGroup);
+    if (!door || distance(this.partyPosition, door) > 0.18) return;
+    this.revealedGroup = nextGroup;
+    this.partyNavigation = { goal: '', path: [] };
+    this.emitEvent(`門後的第 ${nextGroup + 1} 個區域已展開`);
   }
 
   advanceFloor() {
@@ -584,7 +622,8 @@ export class GameSimulation {
       floor: this.floor,
       party: this.party,
       partyPosition: this.partyPosition,
-      enemies: this.enemies,
+      enemies: this.enemies.filter((enemy) => enemy.revealGroup <= this.revealedGroup),
+      revealedGroup: this.revealedGroup,
       scrolls: this.scrolls,
       floorCleared: this.floorCleared,
       paused: this.paused
