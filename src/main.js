@@ -30,11 +30,12 @@ function updateUi(snapshot) {
   if (!snapshot) return;
   if (snapshot.scene === 'world') {
     const nextDungeon = simulation.data.dungeons[snapshot.dungeonRun % simulation.data.dungeons.length];
+    const travelPercent = Math.round(snapshot.worldTravelProgress * 100);
     ui.updateHeader({
       sceneName: '朋友們的冒險地圖',
-      floorLabel: '大地圖',
-      progressLabel: `已攻克 ${snapshot.dungeonRun} 座｜下一站 ${nextDungeon.name}`,
-      canEnterDungeon: true
+      floorLabel: snapshot.worldMap.arrived ? '已抵達入口' : '大地圖移動中',
+      progressLabel: `已攻克 ${snapshot.dungeonRun} 座｜${nextDungeon.name} ${travelPercent}%`,
+      canEnterDungeon: snapshot.worldMap.arrived
     });
   } else {
     ui.updateHeader({
@@ -67,7 +68,9 @@ function updateUi(snapshot) {
     description: scroll.description,
     effectType: scroll.effectType,
     quantity: scroll.quantity,
-    disabled: snapshot.paused || (scroll.effectType !== 'partyHeal' && snapshot.enemies.length === 0)
+    disabled: snapshot.scene !== 'dungeon'
+      || snapshot.paused
+      || (scroll.effectType !== 'partyHeal' && snapshot.enemies.length === 0)
   })));
 }
 

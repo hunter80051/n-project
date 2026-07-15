@@ -4,10 +4,17 @@ import {
   generateBossFloor,
   generateDungeonFloor
 } from './dungeon.js';
+import {
+  createWorldMap,
+  extendWorldMap,
+  getWorldTravelProgress,
+  updateWorldTravel
+} from './world-map.js';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const positionKey = (point) => `${Math.round(point.x)},${Math.round(point.y)}`;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const WORLD_MOVE_SPEED = 2.4;
 
 function noop() {}
 
@@ -37,6 +44,8 @@ export class GameSimulation {
     this.random = createSeededRandom(Date.now());
     this.party = data.characters.map((config) => this.createPartyMember(config));
     this.scrolls = data.scrolls.map((config) => ({ ...config, quantity: config.initialQuantity }));
+    this.worldMap = createWorldMap(Date.now());
+    if (data.dungeons.length > 0) extendWorldMap(this.worldMap, 0, data.dungeons[0]);
     this.recalculatePartyStats();
   }
 
@@ -71,7 +80,7 @@ export class GameSimulation {
   }
 
   enterDungeon() {
-    if (this.scene !== 'world' || this.data.dungeons.length === 0) return false;
+    if (this.scene !== 'world' || !this.worldMap.arrived || this.data.dungeons.length === 0) return false;
     this.currentDungeon = this.data.dungeons[this.dungeonRun % this.data.dungeons.length];
     this.scene = 'dungeon';
     this.floorNumber = 1;
@@ -156,9 +165,21 @@ export class GameSimulation {
   }
 
   update(dtMs) {
-    if (this.paused || this.scene !== 'dungeon' || !this.floor) return;
+    if (this.paused) return;
     const safeDtMs = Math.min(dtMs, 250);
     const dtSeconds = safeDtMs / 1000;
+
+    if (this.scene === 'world') {
+      const wasArrived = this.worldMap.arrived;
+      updateWorldTravel(this.worldMap, WORLD_MOVE_SPEED * dtSeconds);
+      if (!wasArrived && this.worldMap.arrived) {
+        const destination = this.worldMap.destinations.at(-1);
+        this.emitEvent(`小隊抵達 ${destination.name}`);
+        this.emitSceneChange();
+      }
+      return;
+    }
+    if (!this.floor) return;
 
     this.updatePartyResources(dtSeconds, safeDtMs);
     this.updateNavigation(dtSeconds);
@@ -538,6 +559,8 @@ export class GameSimulation {
       member.hp = Math.min(member.maxHp, member.hp + member.maxHp * 0.35);
       member.sp = member.maxSp;
     }
+    const nextDungeon = this.data.dungeons[this.dungeonRun % this.data.dungeons.length];
+    extendWorldMap(this.worldMap, this.dungeonRun, nextDungeon);
     this.emitEvent(`成功攻克 ${completedName}，回到大地圖`);
     this.emitSceneChange();
   }
@@ -556,6 +579,8 @@ export class GameSimulation {
       dungeon: this.currentDungeon,
       floorNumber: this.floorNumber,
       dungeonRun: this.dungeonRun,
+      worldMap: this.worldMap,
+      worldTravelProgress: getWorldTravelProgress(this.worldMap),
       floor: this.floor,
       party: this.party,
       partyPosition: this.partyPosition,

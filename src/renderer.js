@@ -1,7 +1,11 @@
 import { TILE } from './dungeon.js';
+import { getWorldTile, WORLD_OBJECT, WORLD_TERRAIN } from './world-map.js';
 
 const INK = '#392f35';
 const CREAM = '#fff8e9';
+const WORLD_TILE_WIDTH = 64;
+const WORLD_TILE_HEIGHT = 32;
+const WORLD_TILE_DEPTH = 6;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class GameRenderer {
@@ -21,58 +25,246 @@ export class GameRenderer {
 
   renderWorld(snapshot, timeMs) {
     const ctx = this.context;
-    const gradient = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    gradient.addColorStop(0, '#b9d9ef');
-    gradient.addColorStop(0.56, '#d7e5c1');
-    gradient.addColorStop(1, '#8fbd85');
-    ctx.fillStyle = gradient;
+    const world = snapshot.worldMap;
+    const camera = world.partyPosition;
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2 + 24;
+
+    ctx.fillStyle = '#8caed0';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    this.drawCloud(130, 92, 1.3);
-    this.drawCloud(700, 74, 1);
-    this.drawHill(95, 340, 280, '#85a997');
-    this.drawHill(640, 350, 370, '#7da687');
+    const visibleTiles = [];
+    const cameraX = Math.floor(camera.x);
+    const cameraY = Math.floor(camera.y);
+    for (let y = cameraY - 18; y <= cameraY + 18; y += 1) {
+      for (let x = cameraX - 18; x <= cameraX + 18; x += 1) {
+        const screen = this.projectWorldPoint(x, y, camera, centerX, centerY);
+        if (screen.x < -WORLD_TILE_WIDTH || screen.x > this.canvas.width + WORLD_TILE_WIDTH
+          || screen.y < -WORLD_TILE_HEIGHT * 2 || screen.y > this.canvas.height + WORLD_TILE_HEIGHT * 2) continue;
+        visibleTiles.push({
+          x,
+          y,
+          screen,
+          tile: getWorldTile(world, x, y) ?? { x, y, terrain: WORLD_TERRAIN.WATER, object: null }
+        });
+      }
+    }
+    visibleTiles.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.x - b.x);
 
-    ctx.lineWidth = 24;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#e8d7a9';
-    ctx.beginPath();
-    ctx.moveTo(200, 430);
-    ctx.bezierCurveTo(350, 330, 480, 440, 735, 270);
-    ctx.stroke();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = INK;
-    ctx.stroke();
+    for (const entry of visibleTiles) this.drawWorldTile(entry, world, timeMs);
+    for (const entry of visibleTiles) {
+      if (entry.tile.object) this.drawWorldObject(entry, snapshot.dungeonRun, timeMs);
+    }
 
-    const dungeons = this.data.dungeons;
-    const activeIndex = snapshot.dungeonRun % dungeons.length;
-    dungeons.forEach((dungeon, index) => {
-      const x = index === 0 ? 735 : 455;
-      const y = index === 0 ? 245 : 370;
-      this.drawDungeonEntrance(x, y, dungeon.themeColor, index === activeIndex);
-      ctx.fillStyle = INK;
-      ctx.font = 'bold 16px Trebuchet MS';
-      ctx.textAlign = 'center';
-      ctx.fillText(dungeon.name, x, y + 68);
-    });
-
-    const partyOffsets = [[-42, -22], [2, -24], [-24, 24], [24, 22]];
+    const partyOffsets = [[-24, -11], [20, -11], [-17, 20], [18, 20]];
     snapshot.party.forEach((member, index) => {
       const [dx, dy] = partyOffsets[index];
-      this.drawCharacter(member, 205 + dx, 410 + dy, 1.15, timeMs);
+      this.drawCharacter(member, centerX + dx, centerY + dy, .78, timeMs);
     });
 
-    const nextDungeon = dungeons[activeIndex];
+    const nextDungeon = this.data.dungeons[snapshot.dungeonRun % this.data.dungeons.length];
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgb(255 248 233 / 92%)';
-    this.roundRect(24, 24, 390, 100, 16, true, true);
+    this.roundRect(24, 24, 390, 104, 16, true, true);
     ctx.fillStyle = INK;
-    ctx.font = 'bold 25px Trebuchet MS';
-    ctx.fillText('朋友們的下一站', 45, 62);
+    ctx.font = 'bold 23px Trebuchet MS';
+    ctx.fillText(snapshot.worldMap.arrived ? '地下城入口已抵達' : '沿著道路前進中', 45, 59);
     ctx.font = 'bold 18px Trebuchet MS';
-    ctx.fillText(`${nextDungeon.name}　難度 ${snapshot.dungeonRun + 1}`, 45, 93);
+    ctx.fillText(`${nextDungeon.name}　難度 ${snapshot.dungeonRun + 1}`, 45, 89);
     ctx.font = '14px Trebuchet MS';
-    ctx.fillText(`已攻克 ${snapshot.dungeonRun} 座地下城`, 45, 115);
+    ctx.fillText(`地圖延展 ${world.destinations.length} 區｜路程 ${Math.round(snapshot.worldTravelProgress * 100)}%`, 45, 114);
+  }
+
+  projectWorldPoint(worldX, worldY, camera, centerX, centerY) {
+    const dx = worldX - camera.x;
+    const dy = worldY - camera.y;
+    return {
+      x: centerX + (dx - dy) * WORLD_TILE_WIDTH / 2,
+      y: centerY + (dx + dy) * WORLD_TILE_HEIGHT / 2
+    };
+  }
+
+  drawWorldTile(entry, world, timeMs) {
+    const ctx = this.context;
+    const { x, y, tile, screen } = entry;
+    const halfWidth = WORLD_TILE_WIDTH / 2;
+    const halfHeight = WORLD_TILE_HEIGHT / 2;
+    const isWater = tile.terrain === WORLD_TERRAIN.WATER;
+    const parity = Math.abs(x * 7 + y * 11) % 3;
+    const colors = tile.terrain === WORLD_TERRAIN.GRASS
+      ? ['#91d957', '#98df5e', '#88cf51']
+      : tile.terrain === WORLD_TERRAIN.ROAD
+        ? ['#d4aa63', '#ddb66f', '#cda05a']
+        : ['#8caed0', '#91b4d5', '#87a9cb'];
+
+    if (!isWater) {
+      ctx.fillStyle = tile.terrain === WORLD_TERRAIN.ROAD ? '#a87942' : '#5f9c43';
+      ctx.beginPath();
+      ctx.moveTo(screen.x - halfWidth, screen.y);
+      ctx.lineTo(screen.x, screen.y + halfHeight);
+      ctx.lineTo(screen.x, screen.y + halfHeight + WORLD_TILE_DEPTH);
+      ctx.lineTo(screen.x - halfWidth, screen.y + WORLD_TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = tile.terrain === WORLD_TERRAIN.ROAD ? '#b8894d' : '#72ac4c';
+      ctx.beginPath();
+      ctx.moveTo(screen.x, screen.y + halfHeight);
+      ctx.lineTo(screen.x + halfWidth, screen.y);
+      ctx.lineTo(screen.x + halfWidth, screen.y + WORLD_TILE_DEPTH);
+      ctx.lineTo(screen.x, screen.y + halfHeight + WORLD_TILE_DEPTH);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.fillStyle = colors[parity];
+    ctx.beginPath();
+    ctx.moveTo(screen.x, screen.y - halfHeight);
+    ctx.lineTo(screen.x + halfWidth, screen.y);
+    ctx.lineTo(screen.x, screen.y + halfHeight);
+    ctx.lineTo(screen.x - halfWidth, screen.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = isWater ? 'rgb(65 104 145 / 5%)' : 'rgb(57 47 53 / 12%)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (isWater) {
+      if ((Math.abs(x * 13 + y * 5) % 7) === 0) {
+        ctx.strokeStyle = 'rgb(232 246 255 / 48%)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(screen.x - 9, screen.y + Math.sin(timeMs / 700 + x) * 1.5);
+        ctx.lineTo(screen.x + 8, screen.y + Math.sin(timeMs / 700 + y) * 1.5);
+        ctx.stroke();
+      }
+      return;
+    }
+
+    const edgeColor = tile.terrain === WORLD_TERRAIN.GRASS ? '#e5f4a8' : '#f2d58d';
+    const neighbors = [
+      [x - 1, y, [-halfWidth, 0, 0, -halfHeight]],
+      [x, y - 1, [0, -halfHeight, halfWidth, 0]],
+      [x + 1, y, [halfWidth, 0, 0, halfHeight]],
+      [x, y + 1, [0, halfHeight, -halfWidth, 0]]
+    ];
+    ctx.strokeStyle = edgeColor;
+    ctx.lineWidth = 2;
+    for (const [neighborX, neighborY, edge] of neighbors) {
+      if (getWorldTile(world, neighborX, neighborY)?.terrain !== WORLD_TERRAIN.WATER
+        && getWorldTile(world, neighborX, neighborY) !== null) continue;
+      ctx.beginPath();
+      ctx.moveTo(screen.x + edge[0], screen.y + edge[1]);
+      ctx.lineTo(screen.x + edge[2], screen.y + edge[3]);
+      ctx.stroke();
+    }
+  }
+
+  drawWorldObject(entry, activeDungeonRun, timeMs) {
+    const { tile, screen } = entry;
+    const ctx = this.context;
+    const baseY = screen.y + 7;
+    ctx.save();
+    ctx.translate(Math.round(screen.x), Math.round(baseY));
+    ctx.strokeStyle = INK;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    if (tile.object === WORLD_OBJECT.TREE) this.drawWorldTree();
+    else if (tile.object === WORLD_OBJECT.BUSH) this.drawWorldBush();
+    else if (tile.object === WORLD_OBJECT.LARGE_ROCK) this.drawWorldRock(1);
+    else if (tile.object === WORLD_OBJECT.SMALL_ROCK) this.drawWorldRock(.62);
+    else if (tile.object === WORLD_OBJECT.DUNGEON) {
+      this.drawWorldDungeonEntrance(tile, tile.dungeonRun === activeDungeonRun, timeMs);
+    }
+    ctx.restore();
+  }
+
+  drawWorldTree() {
+    const ctx = this.context;
+    ctx.lineWidth = 2.2;
+    ctx.fillStyle = '#8b6542';
+    ctx.fillRect(-4, -27, 8, 29);
+    ctx.strokeRect(-4, -27, 8, 29);
+    const layers = [
+      { y: -49, width: 18, color: '#4b9f4f' },
+      { y: -37, width: 23, color: '#58ad56' },
+      { y: -24, width: 27, color: '#65ba5d' }
+    ];
+    for (const layer of layers) {
+      ctx.fillStyle = layer.color;
+      ctx.beginPath();
+      ctx.moveTo(0, layer.y - 15);
+      ctx.lineTo(layer.width, layer.y + 13);
+      ctx.lineTo(-layer.width, layer.y + 13);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  drawWorldBush() {
+    const ctx = this.context;
+    ctx.fillStyle = '#4f9f4b';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.ellipse(-10, -7, 12, 10, -.2, 0, Math.PI * 2);
+    ctx.ellipse(3, -11, 14, 13, 0, 0, Math.PI * 2);
+    ctx.ellipse(14, -6, 10, 9, .2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  drawWorldRock(scale) {
+    const ctx = this.context;
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#918b91';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(-13, -18);
+    ctx.lineTo(2, -28);
+    ctx.lineTo(18, -16);
+    ctx.lineTo(22, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#6e686f';
+    ctx.beginPath();
+    ctx.moveTo(2, -28);
+    ctx.lineTo(3, -7);
+    ctx.lineTo(18, -16);
+    ctx.stroke();
+  }
+
+  drawWorldDungeonEntrance(tile, active, timeMs) {
+    const ctx = this.context;
+    const pulse = active ? 1 + Math.sin(timeMs / 240) * .06 : 1;
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = tile.themeColor ?? '#c98975';
+    ctx.lineWidth = active ? 3.5 : 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-24, 1);
+    ctx.lineTo(-20, -28);
+    ctx.lineTo(0, -45);
+    ctx.lineTo(22, -27);
+    ctx.lineTo(25, 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#312b34';
+    ctx.beginPath();
+    ctx.arc(0, -8, 10, Math.PI, Math.PI * 2);
+    ctx.lineTo(10, 1);
+    ctx.lineTo(-10, 1);
+    ctx.closePath();
+    ctx.fill();
+    if (active) {
+      ctx.fillStyle = '#ffe88a';
+      ctx.beginPath();
+      ctx.arc(19, -40, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   renderDungeon(snapshot, timeMs) {
@@ -288,63 +480,6 @@ export class GameRenderer {
     ctx.fillText(`第 ${snapshot.floorNumber} / 3 層`, 26, 35);
     ctx.font = '13px Trebuchet MS';
     ctx.fillText(snapshot.floorCleared ? '樓梯已解鎖' : `剩餘敵人 ${snapshot.enemies.length}`, 26, 56);
-  }
-
-  drawCloud(x, y, scale) {
-    const ctx = this.context;
-    ctx.fillStyle = 'rgb(255 255 255 / 72%)';
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(x, y, 25 * scale, Math.PI * .8, Math.PI * 2.1);
-    ctx.arc(x + 34 * scale, y - 10 * scale, 31 * scale, Math.PI, Math.PI * 2);
-    ctx.arc(x + 70 * scale, y, 25 * scale, Math.PI, Math.PI * 2.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  drawHill(x, y, width, color) {
-    const ctx = this.context;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x - width / 2, this.canvas.height);
-    ctx.quadraticCurveTo(x, y - width * .34, x + width / 2, this.canvas.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  drawDungeonEntrance(x, y, color, active) {
-    const ctx = this.context;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = active ? 5 : 3;
-    ctx.beginPath();
-    ctx.moveTo(x - 45, y + 40);
-    ctx.lineTo(x - 35, y - 25);
-    ctx.lineTo(x, y - 52);
-    ctx.lineTo(x + 38, y - 18);
-    ctx.lineTo(x + 45, y + 40);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#302a33';
-    ctx.beginPath();
-    ctx.arc(x, y + 22, 18, Math.PI, Math.PI * 2);
-    ctx.lineTo(x + 18, y + 40);
-    ctx.lineTo(x - 18, y + 40);
-    ctx.closePath();
-    ctx.fill();
-    if (active) {
-      ctx.fillStyle = '#f4d979';
-      ctx.beginPath();
-      ctx.arc(x + 35, y - 37, 9, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
   }
 
   roundRect(x, y, width, height, radius, fill, stroke) {
