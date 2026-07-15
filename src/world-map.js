@@ -14,6 +14,16 @@ export const WORLD_OBJECT = Object.freeze({
 
 const keyOf = (x, y) => `${x},${y}`;
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const TRAVEL_DIRECTIONS = [
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0, y: 1 },
+  { x: -1, y: 1 },
+  { x: -1, y: 0 },
+  { x: -1, y: -1 },
+  { x: 0, y: -1 },
+  { x: 1, y: -1 }
+];
 
 function hash01(seed, x, y, salt = 0) {
   let value = (seed ^ Math.imul(x + 374761393, 668265263) ^ Math.imul(y + 1274126177, 2246822519) ^ salt) >>> 0;
@@ -78,7 +88,7 @@ function addBranch(world, origin, direction, length) {
 
 function fillGrass(world, roadPoints, seed) {
   for (const road of roadPoints) {
-    const radius = 4 + (hash01(seed, road.x, road.y, 91) > 0.72 ? 1 : 0);
+    const radius = 7 + (hash01(seed, road.x, road.y, 91) > 0.72 ? 1 : 0);
     for (let dy = -radius; dy <= radius; dy += 1) {
       for (let dx = -radius; dx <= radius; dx += 1) {
         const distance = Math.abs(dx) + Math.abs(dy);
@@ -95,9 +105,8 @@ function fillWaterBoundary(world) {
   }
   const land = [...world.tiles.values()].filter((tile) => tile.terrain !== WORLD_TERRAIN.WATER);
   for (const tile of land) {
-    for (let dy = -2; dy <= 2; dy += 1) {
-      for (let dx = -2; dx <= 2; dx += 1) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) > 2) continue;
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
         const key = keyOf(tile.x + dx, tile.y + dy);
         if (!world.tiles.has(key)) setTerrain(world, tile.x + dx, tile.y + dy, WORLD_TERRAIN.WATER);
       }
@@ -180,8 +189,12 @@ export function extendWorldMap(world, dungeonRun, dungeon) {
   const random = createRandom(world.seed + segmentIndex * 7919 + 37);
   const start = { ...world.mainPath.at(-1) };
   const distance = 13 + Math.floor(random() * 5);
-  const verticalShift = Math.floor(random() * 9) - 4;
-  const end = { x: start.x + distance, y: start.y + verticalShift };
+  const direction = TRAVEL_DIRECTIONS[Math.floor(random() * TRAVEL_DIRECTIONS.length)];
+  const diagonal = direction.x !== 0 && direction.y !== 0;
+  const end = {
+    x: start.x + direction.x * (diagonal ? Math.ceil(distance / 2) : distance),
+    y: start.y + direction.y * (diagonal ? Math.floor(distance / 2) : distance)
+  };
   const mainSegment = buildConnectedPath(start, end, random);
   const newRoadPoints = [];
   const existingLandKeys = new Set([...world.tiles.values()]
@@ -212,7 +225,7 @@ export function extendWorldMap(world, dungeonRun, dungeon) {
   fillGrass(world, newRoadPoints, world.seed + segmentIndex * 101);
 
   const segmentTiles = [...world.tiles.values()].filter((tile) =>
-    tile.x >= start.x - 6 && tile.x <= end.x + 6
+    tile.x >= Math.min(start.x, end.x) - 9 && tile.x <= Math.max(start.x, end.x) + 9
     && tile.y >= Math.min(start.y, end.y) - 9
     && tile.y <= Math.max(start.y, end.y) + 9
     && !existingLandKeys.has(keyOf(tile.x, tile.y)));

@@ -35,7 +35,7 @@ function createTiles(width, height) {
   return Array.from({ length: height }, () => Array(width).fill(TILE.WALL));
 }
 
-function roomsOverlapWithPadding(a, b, padding = 1) {
+function roomsOverlapWithPadding(a, b, padding = 5) {
   return !(
     a.x + a.width + padding <= b.x ||
     b.x + b.width + padding <= a.x ||
