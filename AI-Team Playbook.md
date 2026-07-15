@@ -43,7 +43,8 @@ Discord 指令
   -> Discord Bot
   -> Orchestrator 建立 Job
   -> Codex 讀取專案並產生 plan
-  -> Ollama Local Agent 依照指定任務產碼
+  -> Codex 判斷是否有適合的獨立低風險子任務
+  -> [可選] Ollama Local Agent 依照指定任務產碼
   -> Codex 檢查 diff
   -> Codex 執行測試與畫面驗證
   -> Discord 回報結果
@@ -265,7 +266,26 @@ type LeaderboardEntry = {
 
 ## 11. Local Agent 任務格式
 
-Codex 派給 Ollama Local Agent 的任務應該盡量具體，避免開放式描述。
+Ollama Local Agent 是可選的低成本產碼助手，不是每個 coding 任務的強制關卡。Codex 應先判斷派工是否真的能降低整體成本。
+
+適合派工的條件：
+
+- 可限制在一至數個明確檔案。
+- 驗收條件具體，輸入與輸出容易描述。
+- 與其他模組耦合低，不需要廣泛理解狀態。
+- 屬於常數、文案、CSS 局部、小型純函式、重複性轉換或單檔案局部邏輯。
+- Local Agent 產出後可以快速透過 diff 與既有驗證判斷正誤。
+
+不適合派工的情況：
+
+- 架構設計、多模組重構或跨檔案狀態整合。
+- 程序地圖核心演算法、複雜狀態機與難以局部驗收的遊戲行為。
+- 需要先診斷根因的 bug、安全、Git、Shell、部署或外部服務操作。
+- 為了符合形式而拆出的無實質價值子任務。
+
+沒有合適子任務時由 Codex 直接實作，並在最終回報簡述未派工原因。Local Agent 失敗一次後即可由 Codex 接手，不強制重派。
+
+決定派工後，任務應盡量具體，避免開放式描述。
 
 建議格式：
 
@@ -341,7 +361,7 @@ git branch task/job-20260713-001
 2. 建立 config.json，完成 channel id 到 project path 的映射。
 3. 建立簡單 Orchestrator，使用 JSON 或 SQLite 保存 job 狀態。
 4. Codex 手動或半自動讀取 job，產生 plan。
-5. Ollama Local Agent 只負責產生指定檔案修改。
+5. 若存在適合的低耦合子任務，Ollama Local Agent 只負責產生指定檔案修改；否則由 Codex 直接實作。
 6. Codex 執行 diff、build、test。
 7. Discord 回報結果並等待 `!approve`。
 8. Codex commit。
@@ -353,7 +373,7 @@ git branch task/job-20260713-001
 - [x] Discord Bot 支援 `!status`、`!build`、`!change`、`!fix`、`!retry`、`!approve`。
 - [x] `config.json` 完成單一 Discord channel 到本專案路徑的映射。
 - [x] 使用 `jobs.json` 保存 Job 狀態。
-- [x] Codex 可接收 Discord Job，並將限定檔案的產碼工作交給 Ollama Local Agent。
+- [x] Codex 可接收 Discord Job，並依適用性判斷是否將限定檔案的產碼工作交給 Ollama Local Agent。
 - [x] Local Agent 禁止 Git、Shell、敏感檔案與 allowedFiles 以外的寫入。
 - [x] Codex 修改後執行專案驗證；驗證失敗不進入核准階段。
 - [x] 驗證通過後建立 preview commit，推送 `preview` branch 並由 GitHub Pages 部署。
@@ -381,7 +401,7 @@ running
 
 - 使用者透過 Discord 操作，降低使用門檻。
 - Orchestrator 負責保存狀態，避免流程混亂。
-- Ollama Local Agent 負責低成本產碼，但不碰 Git、不碰任意 Shell。
+- Ollama Local Agent 在任務適合時負責低成本產碼，但不碰 Git、不碰任意 Shell；不適合時不做形式性派工。
 - Codex 負責規劃、驗證、測試、Git 與最終判斷。
 
 這樣可以保留快速產出的優點，同時避免自架模型因錯誤指令、幻覺或過度修改造成不可逆的專案損害。

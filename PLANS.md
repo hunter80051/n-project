@@ -48,7 +48,7 @@
 ### 2.4 Ollama 協作
 
 - 本機 Ollama API 已確認可用，模型為 `qwen2.5-coder:7b`。
-- 所有適合產碼的工作優先使用 `ollama_local_agent.py`，並限制 allowedFiles。
+- Ollama 採適用性派工：只有低耦合、少量明確檔案、驗收條件具體且預期能降低成本的子任務才使用 `ollama_local_agent.py`。
 - Codex 負責規格、資料 schema、diff 審查、整合、測試與必要修正。
 - Ollama 不操作 Git、Shell、部署或 allowedFiles 以外的檔案。
 
@@ -356,23 +356,23 @@ assets/
 
 驗收：`python validate_project.py` 通過，GitHub Pages 根路徑可直接遊玩。
 
-## 10. Ollama 派工順序
+## 10. Ollama 派工判斷
 
-每次只給明確且可審查的 allowedFiles：
+只有符合以下條件才派工：
 
-1. 資料表與 `src/data-loader.js`。
-2. `index.html`、`style.css`、`src/ui.js`。
-3. `src/dungeon.js`。
-4. `src/simulation.js`。
-5. `src/renderer.js`、`src/main.js`。
-6. `validate_project.py` 與 `README.md`。
+1. 可限制在一至數個明確 allowedFiles。
+2. 驗收條件具體且結果容易由 diff 判斷。
+3. 與其他模組耦合低，不需要架構或根因判斷。
+4. 屬於常數、文案、CSS、小型純函式、重複性轉換或單檔案局部邏輯。
+
+多模組重構、程序地圖核心、狀態機、跨檔案整合、除錯根因、安全、Git 與部署不交給 Ollama。沒有合適子任務時由 Codex 直接完成並說明原因，不做形式性派工。
 
 每次派工後：
 
 1. Codex 查看變更檔案與 diff。
 2. 檢查是否遵守 ID 索引及 MVP 範圍。
 3. 執行語法／資料驗證。
-4. 不符合規格時，先把明確錯誤交回 Ollama 修正；只有結果仍不合格時由 Codex直接修正。
+4. 不符合規格或回傳格式失敗時，保留派工紀錄後可由 Codex 直接接手；只有修正成本明顯較低時才重派一次。
 
 ## 11. 測試案例
 

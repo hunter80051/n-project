@@ -79,7 +79,7 @@ python discord_codex_bot.py
 - 收到 `!approve` 時會重新比對檔案、雜湊、base commit 與 preview tree；一致才 commit 並推送 `main`。
 - Codex 可將範圍明確的產碼工作交給本機 Ollama Local Agent；Local Agent 只能修改 Codex 指定的檔案，不能操作 Git 或 Shell。
 - Discord 會即時顯示 Codex 派工、Ollama 開始/完成，以及 Codex 審查驗證等協作里程碑；不顯示模型的隱藏推理內容。
-- AI 小組展示模式下，凡涉及程式碼檔案的新增或修改，Codex 必須至少派發一個受限子任務給 Ollama；純查詢與 Git 管理除外。
+- Ollama 派工採適用性判斷，不再強制每個 coding 任務都派工。僅將低耦合、少量明確檔案、驗收條件具體的小型子任務交給 Local Agent；架構、除錯、跨模組整合、程序生成核心與部署由 Codex 處理。
 - 一個頻道同時只執行一個 Codex 任務。
 - 任務狀態會保存至 `jobs.json`，Bot 重啟後仍可用 `!status` 查詢上次任務。
 
