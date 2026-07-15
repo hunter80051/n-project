@@ -6,8 +6,9 @@ simulationStepMs,100,number,Fixed simulation step
 partyMoveSpeed,3.4,number,Party movement speed in tiles per second
 roomCountMin,5,number,Minimum procedural room count
 roomCountMax,7,number,Maximum procedural room count
-roomMinSize,4,number,Minimum room edge length
-roomMaxSize,7,number,Maximum room edge length
+roomMinSize,6,number,Minimum room edge length
+roomMaxSize,10,number,Maximum room edge length
+roomMinArea,60,number,Minimum procedural room area
 floorEnemyBase,6,number,Base enemy count per normal floor
 xpBase,40,number,Experience needed for first level up
 xpGrowth,1.35,number,Experience requirement multiplier

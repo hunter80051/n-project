@@ -30,12 +30,17 @@ const roomCenter = (room) => ({
   x: room.x + Math.floor(room.width / 2),
   y: room.y + Math.floor(room.height / 2)
 });
+const roomDistance = (a, b) => {
+  const from = roomCenter(a);
+  const to = roomCenter(b);
+  return Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
+};
 
 function createTiles(width, height) {
   return Array.from({ length: height }, () => Array(width).fill(TILE.WALL));
 }
 
-function roomsOverlapWithPadding(a, b, padding = 5) {
+function roomsOverlapWithPadding(a, b, padding = 3) {
   return !(
     a.x + a.width + padding <= b.x ||
     b.x + b.width + padding <= a.x ||
@@ -50,9 +55,20 @@ function carveRoom(tiles, room) {
   }
 }
 
-function orderRoomsAsRoute(rooms) {
-  const ordered = [rooms[0]];
-  const remaining = rooms.slice(1);
+function orderRoomsAsRoute(rooms, width, height) {
+  const mapCenter = { x: width / 2, y: height / 2 };
+  let startIndex = 0;
+  let startDistance = Infinity;
+  rooms.forEach((room, index) => {
+    const center = roomCenter(room);
+    const distance = Math.abs(center.x - mapCenter.x) + Math.abs(center.y - mapCenter.y);
+    if (distance < startDistance) {
+      startIndex = index;
+      startDistance = distance;
+    }
+  });
+  const remaining = rooms.slice();
+  const ordered = [remaining.splice(startIndex, 1)[0]];
   while (remaining.length > 0) {
     const from = roomCenter(ordered.at(-1));
     let nearestIndex = 0;
@@ -70,12 +86,36 @@ function orderRoomsAsRoute(rooms) {
   return ordered;
 }
 
-function carveCorridorPath(tiles, from, to, random) {
+function createSpreadRoom(random, width, height, rooms, roomMinSize, roomMaxSize, roomMinArea) {
+  let bestRoom = null;
+  let bestDistance = -1;
+  for (let sample = 0; sample < 32; sample += 1) {
+    const roomWidth = randomInt(random, roomMinSize, roomMaxSize);
+    const roomHeight = randomInt(random, roomMinSize, roomMaxSize);
+    if (roomWidth * roomHeight < roomMinArea) continue;
+    const room = {
+      x: randomInt(random, 1, width - roomWidth - 2),
+      y: randomInt(random, 1, height - roomHeight - 2),
+      width: roomWidth,
+      height: roomHeight
+    };
+    if (rooms.some((placed) => roomsOverlapWithPadding(room, placed))) continue;
+    const nearestDistance = rooms.length === 0
+      ? 0
+      : Math.min(...rooms.map((placed) => roomDistance(room, placed)));
+    if (nearestDistance > bestDistance) {
+      bestRoom = room;
+      bestDistance = nearestDistance;
+    }
+  }
+  return bestRoom;
+}
+
+function orthogonalCorridor(from, to, horizontalFirst) {
   const points = [];
   let x = from.x;
   let y = from.y;
   const addPoint = () => {
-    tiles[y][x] = TILE.FLOOR;
     if (points.at(-1)?.x !== x || points.at(-1)?.y !== y) points.push({ x, y });
   };
   const moveX = () => {
@@ -91,7 +131,7 @@ function carveCorridorPath(tiles, from, to, random) {
     }
   };
   addPoint();
-  if (random() < 0.5) {
+  if (horizontalFirst) {
     moveX();
     moveY();
   } else {
@@ -99,6 +139,99 @@ function carveCorridorPath(tiles, from, to, random) {
     moveX();
   }
   return points;
+}
+
+function canUseCorridorPoint(point, width, height, fromRoom, toRoom, rooms, occupiedCorridors) {
+  if (point.x <= 0 || point.y <= 0 || point.x >= width - 1 || point.y >= height - 1) return false;
+  const insideEndpoint = pointInRoom(point, fromRoom) || pointInRoom(point, toRoom);
+  const clearance = [
+    point,
+    { x: point.x - 1, y: point.y },
+    { x: point.x + 1, y: point.y },
+    { x: point.x, y: point.y - 1 },
+    { x: point.x, y: point.y + 1 }
+  ];
+  if (!insideEndpoint && clearance.some((neighbor) => occupiedCorridors.has(pointKey(neighbor)))) return false;
+  return !rooms.some((room) => room !== fromRoom && room !== toRoom
+    && clearance.some((neighbor) => pointInRoom(neighbor, room)));
+}
+
+function findCorridorPath(width, height, fromRoom, toRoom, rooms, occupiedCorridors, random) {
+  const from = roomCenter(fromRoom);
+  const to = roomCenter(toRoom);
+  const maxCorridorLength = Math.max(18, Math.ceil((width + height) * 0.4));
+  const directPaths = random() < 0.5
+    ? [orthogonalCorridor(from, to, true), orthogonalCorridor(from, to, false)]
+    : [orthogonalCorridor(from, to, false), orthogonalCorridor(from, to, true)];
+  for (const path of directPaths) {
+    if (path.length <= maxCorridorLength && path.every((point) => canUseCorridorPoint(
+      point,
+      width,
+      height,
+      fromRoom,
+      toRoom,
+      rooms,
+      occupiedCorridors
+    ))) return path;
+  }
+
+  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let index = directions.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(random, 0, index);
+    [directions[index], directions[swapIndex]] = [directions[swapIndex], directions[index]];
+  }
+  const startKey = pointKey(from);
+  const goalKey = pointKey(to);
+  const queue = [from];
+  const previous = new Map([[startKey, null]]);
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const point = queue[cursor];
+    if (pointKey(point) === goalKey) break;
+    for (const [dx, dy] of directions) {
+      const next = { x: point.x + dx, y: point.y + dy };
+      const key = pointKey(next);
+      if (previous.has(key)) continue;
+      if (!canUseCorridorPoint(next, width, height, fromRoom, toRoom, rooms, occupiedCorridors)) continue;
+      previous.set(key, point);
+      queue.push(next);
+    }
+  }
+  if (!previous.has(goalKey)) return null;
+
+  const path = [];
+  let current = to;
+  while (current) {
+    path.push(current);
+    current = previous.get(pointKey(current));
+  }
+  path.reverse();
+  return path.length <= maxCorridorLength ? path : null;
+}
+
+function carveCorridorPath(tiles, path) {
+  for (const point of path) tiles[point.y][point.x] = TILE.FLOOR;
+}
+
+function findDungeonCorridors(width, height, rooms, parentIndexes, targetOrder, random) {
+  const occupiedCorridors = new Set();
+  const corridors = Array(rooms.length - 1);
+  for (const targetIndex of targetOrder) {
+    const corridor = findCorridorPath(
+      width,
+      height,
+      rooms[parentIndexes[targetIndex]],
+      rooms[targetIndex],
+      rooms,
+      occupiedCorridors,
+      random
+    );
+    if (!corridor) return null;
+    corridors[targetIndex - 1] = corridor;
+    for (const point of corridor) {
+      if (!rooms.some((room) => pointInRoom(point, room))) occupiedCorridors.add(pointKey(point));
+    }
+  }
+  return corridors;
 }
 
 function pointInRoom(point, room) {
@@ -212,12 +345,13 @@ function collectRoomSpawnPoints(rooms, count, entrance, stairs, random) {
 
 function tryGenerateDungeon(options, seed) {
   const {
-    width = 40,
-    height = 22,
+    width = 48,
+    height = 28,
     roomCountMin = 5,
     roomCountMax = 7,
-    roomMinSize = 4,
-    roomMaxSize = 7,
+    roomMinSize = 6,
+    roomMaxSize = 10,
+    roomMinArea = 60,
     enemyCount = 6
   } = options;
   const random = createSeededRandom(seed);
@@ -225,35 +359,67 @@ function tryGenerateDungeon(options, seed) {
   const rooms = [];
   const targetRoomCount = randomInt(random, roomCountMin, roomCountMax);
 
-  for (let attempt = 0; attempt < 1200 && rooms.length < targetRoomCount; attempt += 1) {
-    const roomWidth = randomInt(random, roomMinSize, roomMaxSize);
-    const roomHeight = randomInt(random, roomMinSize, roomMaxSize);
-    const room = {
-      x: randomInt(random, 1, width - roomWidth - 2),
-      y: randomInt(random, 1, height - roomHeight - 2),
-      width: roomWidth,
-      height: roomHeight
-    };
-    if (rooms.some((placed) => roomsOverlapWithPadding(room, placed))) continue;
+  while (rooms.length < targetRoomCount) {
+    const room = createSpreadRoom(random, width, height, rooms, roomMinSize, roomMaxSize, roomMinArea);
+    if (!room) break;
     rooms.push(room);
     carveRoom(tiles, room);
   }
 
   if (rooms.length < roomCountMin) return null;
-  const orderedRooms = orderRoomsAsRoute(rooms).map((room, revealGroup) => ({ ...room, revealGroup }));
-  const corridors = [];
+  const orderedRooms = orderRoomsAsRoute(rooms, width, height)
+    .map((room, revealGroup) => ({ ...room, revealGroup }));
+  const wantsDeadEnd = orderedRooms.length >= 5 && random() < 0.1;
+  let deadEndRoomIndex = -1;
+  let parentIndexes = orderedRooms.map((room, index) => Math.max(0, index - 1));
+  let targetOrder = parentIndexes.slice(1).map((parent, index) => index + 1);
+  let corridors = null;
+  if (wantsDeadEnd) {
+    const candidates = targetOrder.slice(0, -1);
+    for (let index = candidates.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(random, 0, index);
+      [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+    }
+    for (const candidate of candidates) {
+      const candidateParents = orderedRooms.map((room, index) => Math.max(0, index - 1));
+      candidateParents[candidate + 1] = candidate - 1;
+      const candidateOrder = targetOrder.filter((index) => index !== candidate);
+      candidateOrder.push(candidate);
+      const candidateCorridors = findDungeonCorridors(
+        width,
+        height,
+        orderedRooms,
+        candidateParents,
+        candidateOrder,
+        random
+      );
+      if (!candidateCorridors) continue;
+      deadEndRoomIndex = candidate;
+      parentIndexes = candidateParents;
+      targetOrder = candidateOrder;
+      corridors = candidateCorridors;
+      break;
+    }
+  }
+  if (!corridors) {
+    corridors = findDungeonCorridors(
+      width,
+      height,
+      orderedRooms,
+      parentIndexes,
+      targetOrder,
+      random
+    );
+  }
+  if (!corridors) return null;
   const doors = [];
   const edges = [];
   for (let index = 1; index < orderedRooms.length; index += 1) {
-    const corridor = carveCorridorPath(
-      tiles,
-      roomCenter(orderedRooms[index - 1]),
-      roomCenter(orderedRooms[index]),
-      random
-    );
-    corridors.push(corridor);
-    doors.push(findDoor(corridor, orderedRooms[index - 1], index));
-    edges.push([index - 1, index]);
+    const fromIndex = parentIndexes[index];
+    const corridor = corridors[index - 1];
+    carveCorridorPath(tiles, corridor);
+    doors.push(findDoor(corridor, orderedRooms[fromIndex], index));
+    edges.push([fromIndex, index]);
   }
   const groups = assignRevealGroups(tiles, orderedRooms, corridors);
   const entrance = roomCenter(orderedRooms[0]);
@@ -295,6 +461,7 @@ function tryGenerateDungeon(options, seed) {
     stairs,
     spawnPoints,
     seed,
+    deadEndRoomIndex,
     isBossFloor: false
   };
 }
@@ -363,6 +530,7 @@ export function generateBossFloor(options = {}) {
     stairs,
     spawnPoints: spawnPoints.slice(0, enemyCount),
     seed,
+    deadEndRoomIndex: -1,
     isBossFloor: true
   };
 }

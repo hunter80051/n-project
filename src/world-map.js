@@ -61,15 +61,60 @@ function buildConnectedPath(start, end, random) {
   let preferHorizontal = random() > 0.35;
 
   while (x !== end.x || y !== end.y) {
-    const canMoveX = x !== end.x;
-    const canMoveY = y !== end.y;
-    const moveX = canMoveX && (!canMoveY || preferHorizontal);
-    if (moveX) x += Math.sign(end.x - x);
-    else y += Math.sign(end.y - y);
-    path.push({ x, y });
-    if (canMoveX && canMoveY && random() < 0.38) preferHorizontal = !preferHorizontal;
+    const remainingX = Math.abs(end.x - x);
+    const remainingY = Math.abs(end.y - y);
+    const moveHorizontal = remainingX > 0 && (remainingY === 0 || preferHorizontal);
+    const remaining = moveHorizontal ? remainingX : remainingY;
+    let run = Math.min(remaining, 2 + Math.floor(random() * 3));
+    if (remaining - run === 1) run = remaining;
+    for (let step = 0; step < run; step += 1) {
+      if (moveHorizontal) x += Math.sign(end.x - x);
+      else y += Math.sign(end.y - y);
+      path.push({ x, y });
+    }
+    preferHorizontal = !moveHorizontal;
   }
   return path;
+}
+
+function routeClearance(world, path, start) {
+  const oldRoads = [...world.tiles.values()].filter((tile) =>
+    tile.terrain === WORLD_TERRAIN.ROAD
+    && Math.abs(tile.x - start.x) + Math.abs(tile.y - start.y) > 3);
+  if (oldRoads.length === 0) return Infinity;
+
+  let clearance = Infinity;
+  for (const point of path.slice(3)) {
+    for (const road of oldRoads) {
+      clearance = Math.min(clearance, Math.abs(point.x - road.x) + Math.abs(point.y - road.y));
+      if (clearance === 0) return 0;
+    }
+  }
+  return clearance;
+}
+
+function chooseMainSegment(world, start, random) {
+  const directions = TRAVEL_DIRECTIONS.slice();
+  for (let index = directions.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [directions[index], directions[swapIndex]] = [directions[swapIndex], directions[index]];
+  }
+
+  let bestCandidate = null;
+  for (const direction of directions) {
+    const distance = 13 + Math.floor(random() * 5);
+    const diagonal = direction.x !== 0 && direction.y !== 0;
+    const end = {
+      x: start.x + direction.x * (diagonal ? Math.ceil(distance / 2) : distance),
+      y: start.y + direction.y * (diagonal ? Math.floor(distance / 2) : distance)
+    };
+    const path = buildConnectedPath(start, end, random);
+    const clearance = routeClearance(world, path, start);
+    if (!bestCandidate || clearance > bestCandidate.clearance) {
+      bestCandidate = { end, path, clearance };
+    }
+  }
+  return bestCandidate;
 }
 
 function addBranch(world, origin, direction, length) {
@@ -188,14 +233,7 @@ export function extendWorldMap(world, dungeonRun, dungeon) {
   const segmentIndex = world.destinations.length;
   const random = createRandom(world.seed + segmentIndex * 7919 + 37);
   const start = { ...world.mainPath.at(-1) };
-  const distance = 13 + Math.floor(random() * 5);
-  const direction = TRAVEL_DIRECTIONS[Math.floor(random() * TRAVEL_DIRECTIONS.length)];
-  const diagonal = direction.x !== 0 && direction.y !== 0;
-  const end = {
-    x: start.x + direction.x * (diagonal ? Math.ceil(distance / 2) : distance),
-    y: start.y + direction.y * (diagonal ? Math.floor(distance / 2) : distance)
-  };
-  const mainSegment = buildConnectedPath(start, end, random);
+  const { end, path: mainSegment } = chooseMainSegment(world, start, random);
   const newRoadPoints = [];
   const existingLandKeys = new Set([...world.tiles.values()]
     .filter((tile) => tile.terrain !== WORLD_TERRAIN.WATER)

@@ -308,7 +308,14 @@ export class GameRenderer {
 
     for (const enemy of snapshot.enemies) this.drawDungeonEnemy(enemy, camera, centerX, centerY, timeMs);
 
-    const partyOffsets = [[-22, -10], [19, -10], [-15, 18], [17, 18]];
+    const atExit = snapshot.floorCleared
+      && Math.hypot(
+        snapshot.partyPosition.x - snapshot.floor.stairs.x,
+        snapshot.partyPosition.y - snapshot.floor.stairs.y
+      ) <= 0.15;
+    const partyOffsets = atExit
+      ? [[-14, -7], [14, -7], [-10, 11], [10, 11]]
+      : [[-22, -10], [19, -10], [-15, 18], [17, 18]];
     snapshot.party.forEach((member, index) => {
       const [dx, dy] = partyOffsets[index];
       this.drawCharacter(member, centerX + dx, centerY + dy, .72, timeMs);
@@ -472,16 +479,25 @@ export class GameRenderer {
   drawEntranceStairs() {
     const ctx = this.context;
     ctx.strokeStyle = '#302a32';
-    ctx.lineWidth = 1.7;
-    for (let step = 0; step < 3; step += 1) {
-      const width = 30 - step * 7;
-      const y = 5 - step * 7;
-      ctx.fillStyle = step === 2 ? '#b8c4d2' : '#8794a2';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = '#596777';
+    ctx.beginPath();
+    ctx.moveTo(-20, 8);
+    ctx.lineTo(20, 8);
+    ctx.lineTo(13, -15);
+    ctx.lineTo(-13, -15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    for (let step = 0; step < 4; step += 1) {
+      const inset = step * 2.4;
+      const y = 7 - step * 6;
+      ctx.fillStyle = step === 3 ? '#d5e0e8' : '#9eabb8';
       ctx.beginPath();
-      ctx.moveTo(0, y - 7);
-      ctx.lineTo(width / 2, y);
-      ctx.lineTo(0, y + 7);
-      ctx.lineTo(-width / 2, y);
+      ctx.moveTo(-18 + inset, y);
+      ctx.lineTo(18 - inset, y);
+      ctx.lineTo(15 - inset, y - 5);
+      ctx.lineTo(-15 + inset, y - 5);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -494,15 +510,21 @@ export class GameRenderer {
     ctx.globalAlpha = pulse;
     ctx.fillStyle = '#211e25';
     ctx.strokeStyle = active ? '#f5dc82' : '#766b75';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 20, 10, 0, 0, Math.PI * 2);
+    ctx.moveTo(-22, -10);
+    ctx.lineTo(22, -10);
+    ctx.lineTo(16, 11);
+    ctx.lineTo(-16, 11);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    for (let step = 0; step < 3; step += 1) {
+    for (let step = 0; step < 4; step += 1) {
+      const inset = step * 2.6;
+      const y = -7 + step * 5;
       ctx.beginPath();
-      ctx.moveTo(-13 + step * 3, -4 + step * 3);
-      ctx.lineTo(13 - step * 3, -4 + step * 3);
+      ctx.moveTo(-18 + inset, y);
+      ctx.lineTo(18 - inset, y);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -513,11 +535,11 @@ export class GameRenderer {
     const pulse = active ? 1 + Math.sin(timeMs / 190) * .1 : .75;
     ctx.scale(pulse, pulse * .56);
     ctx.globalAlpha = active ? .9 : .28;
-    for (let ring = 0; ring < 3; ring += 1) {
+    for (let ring = 0; ring < 4; ring += 1) {
       ctx.strokeStyle = ring === 1 ? '#f7e68b' : '#9dddf0';
-      ctx.lineWidth = 4 - ring;
+      ctx.lineWidth = Math.max(1, 5 - ring);
       ctx.beginPath();
-      ctx.arc(0, 0, 22 - ring * 6, 0, Math.PI * 2);
+      ctx.arc(0, 0, 36 - ring * 7, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;

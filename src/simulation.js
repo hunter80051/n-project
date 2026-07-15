@@ -96,12 +96,13 @@ export class GameSimulation {
     const seed = 10000 + this.dungeonRun * 100 + this.floorNumber;
     const enemyCount = this.floorNumber === 1 ? dungeon.floor1EnemyCount : dungeon.floor2EnemyCount;
     const generatorOptions = {
-      width: 40,
-      height: 22,
+      width: 48,
+      height: 28,
       roomCountMin: this.data.balance.roomCountMin,
       roomCountMax: this.data.balance.roomCountMax,
       roomMinSize: this.data.balance.roomMinSize,
       roomMaxSize: this.data.balance.roomMaxSize,
+      roomMinArea: this.data.balance.roomMinArea,
       enemyCount: this.floorNumber === 3 ? 1 : enemyCount,
       seed
     };
@@ -558,8 +559,12 @@ export class GameSimulation {
       this.partyNavigation = { goal: '', path: [] };
       this.emitEvent(this.floorNumber === 3 ? 'Boss 已擊敗，出口開啟' : '本層已清空，樓梯解鎖');
     }
-    if (!this.floorCleared || distance(this.partyPosition, this.floor.stairs) > 0.15) return;
-    if (this.floorTransitionMs <= 0) this.floorTransitionMs = 700;
+    const wholePartyAtExit = this.party.length > 0
+      && this.party.every((member) => member.hp > 0)
+      && distance(this.partyPosition, this.floor.stairs) <= 0.15
+      && this.partyNavigation.path.length === 0;
+    if (!this.floorCleared || !wholePartyAtExit) return;
+    if (this.floorTransitionMs <= 0) this.floorTransitionMs = 1000;
     else {
       this.floorTransitionMs -= dtMs;
       if (this.floorTransitionMs <= 0) this.advanceFloor();
