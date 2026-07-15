@@ -8,3 +8,7 @@ bot-startup.log
 jobs.json
 jobs.json.tmp
 .job-events/
+
+# Local reference inputs used for prototype analysis; keep them outside deploy commits.
+Game Sample/
+Prototype-MVP.txt

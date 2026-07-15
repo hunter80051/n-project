@@ -208,6 +208,12 @@ async def run_git(path: Path, *args: str) -> tuple[int, str, str]:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+    stdout, stderr = await process.communicate()
+    return (
+        process.returncode,
+        stdout.decode("utf-8", errors="replace").strip(),
+        stderr.decode("utf-8", errors="replace").strip(),
+    )
 
 
 async def run_command(path: Path, command: list[str]) -> tuple[int, str, str]:
@@ -317,12 +323,6 @@ async def wait_for_preview(url: str, commit: str, attempts: int = 24) -> tuple[b
             last_error = str(exc)
         await asyncio.sleep(5)
     return False, f"等待 GitHub Pages 部署逾時：{last_error}"
-    stdout, stderr = await process.communicate()
-    return (
-        process.returncode,
-        stdout.decode("utf-8", errors="replace").strip(),
-        stderr.decode("utf-8", errors="replace").strip(),
-    )
 
 
 async def require_clean_git_project(path: Path) -> str | None:
