@@ -118,12 +118,12 @@ Discord 可以用來整理任務的下達、派發、回覆與討論，但不建
 
 | 指令 | 用途 |
 |---|---|
-| `!build [描述]` | 建立新功能或新專案 |
-| `!change [描述]` | 修改既有功能 |
-| `!fix [描述]` | 修復 bug |
+| `!build [描述]` | 從乾淨工作樹建立新功能或新專案 |
+| `!change [描述]` | 修改既有功能；`waiting_approval` 時延續並調整目前預覽 |
+| `!fix [描述]` | 修復 bug；`waiting_approval` 時延續並修正目前預覽 |
 | `!status` | 查看目前任務與專案狀態 |
 | `!preview` | 啟動或回報預覽網址 |
-| `!retry` | 拒絕目前結果並要求修正 |
+| `!retry [補充]` | 僅在執行、驗證、部署失敗或取消後重跑上一個任務 |
 | `!approve` | 核准目前變更並交給 Codex commit |
 | `!rollback last` | 回復上一個已核准變更 |
 
@@ -154,6 +154,19 @@ queued
  -> approved
  -> committed
 ```
+
+預覽調整流程：
+
+```text
+waiting_approval
+ -> !fix / !change
+ -> coding
+ -> testing
+ -> waiting_approval
+ -> !approve
+```
+
+`!retry` 不處理已成功的預覽；成功預覽要調整時使用 `!fix` 或 `!change`。
 
 錯誤流程：
 

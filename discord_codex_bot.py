@@ -20,6 +20,13 @@ from discord.ext import commands
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = Path(os.getenv("CODEX_DISCORD_CONFIG", BASE_DIR / "config.json"))
 DISCORD_LIMIT = 1900
+RETRYABLE_STATES = {
+    "failed",
+    "validation_failed",
+    "deployment_failed",
+    "approval_failed",
+    "cancelled",
+}
 
 
 @dataclass
@@ -376,10 +383,10 @@ async def on_ready() -> None:
 async def help_command(ctx: commands.Context) -> None:
     await ctx.send(
         f"`{PREFIX}build <任務>` 指派新任務\n"
-        f"`{PREFIX}change <任務>` 修改既有功能\n"
-        f"`{PREFIX}fix <任務>` 修復問題\n"
+        f"`{PREFIX}change <任務>` 修改功能；等待核准時調整目前預覽\n"
+        f"`{PREFIX}fix <任務>` 修復問題；等待核准時修正目前預覽\n"
         f"`{PREFIX}status` 查詢狀態\n"
-        f"`{PREFIX}retry [補充說明]` 重跑上一個任務\n"
+        f"`{PREFIX}retry [補充說明]` 重跑失敗或取消的上一個任務\n"
         f"`{PREFIX}approve` 核准變更並建立 Git commit\n"
         f"`{PREFIX}cancel` 中止目前任務"
     )
@@ -568,6 +575,48 @@ async def execute_task(
         state.process = None
 
 
+async def preview_continuation_error(path: Path, state: ChannelState) -> str | None:
+    if not state.base_commit or not state.changed_files or not state.file_hashes:
+        return "目前預覽缺少完整驗證資料，請使用 !retry 重新產生預覽。"
+
+    files = await changed_files(path)
+    if files != state.changed_files:
+        return "目前變更檔案與預覽版本不一致，請先還原額外修改或使用 !retry。"
+
+    head = await current_commit(path)
+    if head != state.base_commit:
+        return "main 已在預覽後改變，不能直接延續這份預覽，請使用 !retry。"
+
+    hashes = await hash_files(path, files)
+    if hashes != state.file_hashes:
+        return "目前檔案內容與已部署預覽不一致，請先還原額外修改或使用 !retry。"
+    return None
+
+
+async def continue_preview_task(
+    ctx: commands.Context, task: str, task_type: str
+) -> bool:
+    state = states.setdefault(ctx.channel.id, ChannelState())
+    if state.status != "waiting_approval":
+        return False
+
+    task = clean_mentions(task)
+    if not task:
+        await ctx.send(f"請描述要調整的預覽內容，例如：`{PREFIX}{task_type} 修正按鈕位置`。")
+        return True
+
+    _, path = get_project(ctx.channel.id)
+    error = await preview_continuation_error(path, state)
+    if error:
+        await ctx.send(f"⛔ {error}")
+        return True
+
+    label = "預覽問題修正" if task_type == "fix" else "預覽需求調整"
+    combined_task = f"{state.task}\n\n{label}：{task}"
+    await execute_task(ctx, combined_task, task_type, reuse_job=True)
+    return True
+
+
 @bot.command(name="build")
 @commands.check(authorized)
 async def build_command(ctx: commands.Context, *, task: str = "") -> None:
@@ -577,12 +626,16 @@ async def build_command(ctx: commands.Context, *, task: str = "") -> None:
 @bot.command(name="change")
 @commands.check(authorized)
 async def change_command(ctx: commands.Context, *, task: str = "") -> None:
+    if await continue_preview_task(ctx, task, "change"):
+        return
     await execute_task(ctx, task, "change")
 
 
 @bot.command(name="fix")
 @commands.check(authorized)
 async def fix_command(ctx: commands.Context, *, task: str = "") -> None:
+    if await continue_preview_task(ctx, task, "fix"):
+        return
     await execute_task(ctx, task, "fix")
 
 
@@ -592,6 +645,17 @@ async def retry_command(ctx: commands.Context, *, note: str = "") -> None:
     state = states.setdefault(ctx.channel.id, ChannelState())
     if not state.task:
         await ctx.send("此頻道尚無可重試的任務。")
+        return
+    if state.status == "waiting_approval":
+        await ctx.send(
+            f"目前預覽已成功並等待核准。請使用 `{PREFIX}fix <問題>` 修正 bug，"
+            f"或 `{PREFIX}change <調整>` 修改需求。"
+        )
+        return
+    if state.status not in RETRYABLE_STATES:
+        await ctx.send(
+            f"目前狀態 `{state.status}` 不需要重試；`{PREFIX}retry` 僅用於執行、驗證、部署失敗或取消的任務。"
+        )
         return
     task = state.task + (f"\n\n重試補充：{clean_mentions(note)}" if note.strip() else "\n\n請重新檢查並完成此任務。")
     await execute_task(ctx, task, state.task_type or "build", reuse_job=True)
