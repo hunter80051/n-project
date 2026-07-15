@@ -1,4 +1,4 @@
-import { DUNGEON_OBJECT, TILE } from './dungeon.js';
+import { DUNGEON_OBJECT, TILE } from './dungeon.js?v=20260716a';
 import { getWorldTile, WORLD_OBJECT, WORLD_TERRAIN } from './world-map.js';
 
 const INK = '#392f35';
@@ -59,10 +59,9 @@ export class GameRenderer {
       if (entry.tile.object) this.drawWorldObject(entry, snapshot.dungeonRun, timeMs);
     }
 
-    const partyOffsets = [[-24, -11], [20, -11], [-17, 20], [18, 20]];
-    snapshot.party.forEach((member, index) => {
-      const [dx, dy] = partyOffsets[index];
-      this.drawCharacter(member, centerX + dx, centerY + dy, .78, timeMs);
+    snapshot.party.forEach((member) => {
+      const screen = this.projectWorldPoint(member.x, member.y, camera, centerX, centerY);
+      this.drawCharacter(member, screen.x, screen.y, .78, timeMs);
     });
 
     const nextDungeon = this.data.dungeons[snapshot.dungeonRun % this.data.dungeons.length];
@@ -297,29 +296,36 @@ export class GameRenderer {
     visibleTiles.sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.x - b.x);
     for (const entry of visibleTiles) this.drawDungeonGround(entry, floor, snapshot.revealedGroup, theme);
 
-    const visibleObjects = floor.objects
-      .filter((object) => object.revealGroup <= snapshot.revealedGroup)
+    const visibleObjects = [
+      ...floor.objects.filter((object) => object.revealGroup <= snapshot.revealedGroup),
+      ...this.createRevealBoundaryWalls(floor, snapshot.revealedGroup)
+    ]
       .map((object) => ({
         ...object,
         screen: this.projectDungeonPoint(object.x, object.y, camera, centerX, centerY)
       }))
       .sort((a, b) => (a.x + a.y) - (b.x + b.y) || a.x - b.x);
-    for (const object of visibleObjects) this.drawDungeonObject(object, snapshot, theme, timeMs);
+    const foregroundObjects = visibleObjects.filter((object) => this.isForegroundDungeonObject(object));
+    for (const object of visibleObjects) {
+      if (!this.isForegroundDungeonObject(object)) this.drawDungeonObject(object, snapshot, theme, timeMs);
+    }
 
-    for (const enemy of snapshot.enemies) this.drawDungeonEnemy(enemy, camera, centerX, centerY, timeMs);
-
-    const atExit = snapshot.floorCleared
-      && Math.hypot(
-        snapshot.partyPosition.x - snapshot.floor.stairs.x,
-        snapshot.partyPosition.y - snapshot.floor.stairs.y
-      ) <= 0.15;
-    const partyOffsets = atExit
-      ? [[-14, -7], [14, -7], [-10, 11], [10, 11]]
-      : [[-22, -10], [19, -10], [-15, 18], [17, 18]];
-    snapshot.party.forEach((member, index) => {
-      const [dx, dy] = partyOffsets[index];
-      this.drawCharacter(member, centerX + dx, centerY + dy, .72, timeMs);
-    });
+    const actors = [
+      ...snapshot.chests.map((chest) => ({ kind: 'chest', actor: chest })),
+      ...snapshot.enemies.map((enemy) => ({ kind: 'enemy', actor: enemy })),
+      ...snapshot.party.map((member) => ({ kind: 'party', actor: member }))
+    ].sort((a, b) => (a.actor.x + a.actor.y) - (b.actor.x + b.actor.y) || a.actor.x - b.actor.x);
+    for (const entry of actors) {
+      if (entry.kind === 'enemy') this.drawDungeonEnemy(entry.actor, camera, centerX, centerY, timeMs);
+      else {
+        const screen = this.projectDungeonPoint(entry.actor.x, entry.actor.y, camera, centerX, centerY);
+        if (entry.kind === 'party') this.drawCharacter(entry.actor, screen.x, screen.y, .72, timeMs);
+        else this.drawChest(screen.x, screen.y, timeMs);
+      }
+    }
+    for (const projectile of snapshot.projectiles) this.drawProjectile(projectile, camera, centerX, centerY, timeMs);
+    for (const effect of snapshot.spellEffects) this.drawSpellEffect(effect, snapshot, camera, centerX, centerY, timeMs);
+    for (const object of foregroundObjects) this.drawDungeonObject(object, snapshot, theme, timeMs);
 
     this.drawDungeonHud(snapshot);
     const boss = snapshot.enemies.find((enemy) => enemy.isBoss);
@@ -340,6 +346,53 @@ export class GameRenderer {
     return floor.tiles[y][x] !== TILE.WALL
       && floor.groups[y][x] >= 0
       && floor.groups[y][x] <= revealedGroup;
+  }
+
+  createRevealBoundaryWalls(floor, revealedGroup) {
+    const edges = [
+      { dx: -1, dy: 0, edge: 'west', orientation: 'axisY' },
+      { dx: 1, dy: 0, edge: 'east', orientation: 'axisY' },
+      { dx: 0, dy: -1, edge: 'north', orientation: 'axisX' },
+      { dx: 0, dy: 1, edge: 'south', orientation: 'axisX' }
+    ];
+    const doorEdges = new Set();
+    for (const door of floor.objects) {
+      if (door.type !== DUNGEON_OBJECT.DOOR
+        || door.revealGroup > revealedGroup) continue;
+      const edge = this.directionToEdge(door.direction);
+      const perpendicular = { x: -door.direction.y, y: door.direction.x };
+      for (const offset of [-1, 0, 1]) {
+        doorEdges.add(`${door.x + perpendicular.x * offset},${door.y + perpendicular.y * offset},${edge}`);
+      }
+    }
+
+    const walls = [];
+    for (let y = 0; y < floor.height; y += 1) {
+      for (let x = 0; x < floor.width; x += 1) {
+        if (!this.isDungeonTileVisible(floor, x, y, revealedGroup)) continue;
+        const currentGroup = floor.groups[y][x];
+        for (const boundary of edges) {
+          const neighborX = x + boundary.dx;
+          const neighborY = y + boundary.dy;
+          if (neighborX < 0 || neighborY < 0 || neighborX >= floor.width || neighborY >= floor.height) continue;
+          const neighborGroup = floor.groups[neighborY][neighborX];
+          if (floor.tiles[neighborY][neighborX] === TILE.WALL
+            || neighborGroup < 0
+            || neighborGroup <= currentGroup) continue;
+          if (doorEdges.has(`${x},${y},${boundary.edge}`)) continue;
+          walls.push({
+            type: DUNGEON_OBJECT.WALL,
+            x,
+            y,
+            edge: boundary.edge,
+            orientation: boundary.orientation,
+            revealGroup: floor.groups[y][x],
+            groupBoundary: true
+          });
+        }
+      }
+    }
+    return walls;
   }
 
   shadeColor(hex, amount) {
@@ -407,6 +460,15 @@ export class GameRenderer {
     return 'south';
   }
 
+  isForegroundDungeonObject(object) {
+    if (object.type === DUNGEON_OBJECT.WALL) return object.edge === 'south' || object.edge === 'east';
+    if (object.type === DUNGEON_OBJECT.DOOR) {
+      const edge = this.directionToEdge(object.direction);
+      return edge === 'south' || edge === 'east';
+    }
+    return false;
+  }
+
   drawDungeonObject(object, snapshot, theme, timeMs) {
     const ctx = this.context;
     ctx.save();
@@ -449,6 +511,17 @@ export class GameRenderer {
   drawDungeonDoor(object, open, theme) {
     const ctx = this.context;
     const edge = this.directionToEdge(object.direction);
+    const perpendicular = { x: -object.direction.y, y: object.direction.x };
+    const sideOffset = {
+      x: (perpendicular.x - perpendicular.y) * DUNGEON_TILE_WIDTH / 2,
+      y: (perpendicular.x + perpendicular.y) * DUNGEON_TILE_HEIGHT / 2
+    };
+    for (const sign of [-1, 1]) {
+      ctx.save();
+      ctx.translate(sideOffset.x * sign, sideOffset.y * sign);
+      this.drawDungeonWall({ edge, orientation: object.direction.x !== 0 ? 'axisY' : 'axisX' }, theme);
+      ctx.restore();
+    }
     const [start, end] = this.dungeonEdgePoints(edge);
     const height = 31;
     const widthX = end[0] - start[0];
@@ -545,41 +618,160 @@ export class GameRenderer {
     ctx.globalAlpha = 1;
   }
 
+  drawChest(x, y, timeMs) {
+    const ctx = this.context;
+    const bounce = Math.sin(timeMs / 180) * 2;
+    ctx.save();
+    ctx.translate(x, y - 8 + bounce);
+    ctx.fillStyle = '#b96f3e';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(-14, -13, 28, 20, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#e7ad4f';
+    ctx.fillRect(-14, -5, 28, 6);
+    ctx.strokeRect(-14, -5, 28, 6);
+    ctx.fillStyle = '#fff0a4';
+    ctx.fillRect(-3, -4, 6, 10);
+    ctx.strokeRect(-3, -4, 6, 10);
+    ctx.restore();
+  }
+
+  drawProjectile(projectile, camera, centerX, centerY, timeMs) {
+    const ctx = this.context;
+    const screen = this.projectDungeonPoint(projectile.x, projectile.y, camera, centerX, centerY);
+    ctx.save();
+    ctx.translate(screen.x, screen.y - 12);
+    if (projectile.attackType === 'magic') {
+      const pulse = 5 + Math.sin(timeMs / 70) * 1.5;
+      ctx.globalAlpha = .3;
+      ctx.fillStyle = '#bcecff';
+      ctx.beginPath();
+      ctx.arc(0, 0, pulse * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#f5fbff';
+      ctx.strokeStyle = '#6b70ad';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.rotate(-.35);
+      ctx.strokeStyle = '#fff0a4';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-13, 0);
+      ctx.lineTo(-4, 0);
+      ctx.stroke();
+      ctx.fillStyle = projectile.color;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(2, 0, 7, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawSpellEffect(effect, snapshot, camera, centerX, centerY, timeMs) {
+    const ctx = this.context;
+    const caster = snapshot.party.find((member) => member.characterId === effect.casterCharacterId);
+    if (!caster) return;
+    const progress = clamp(effect.elapsedMs / effect.durationMs, 0, 1);
+    const casterScreen = this.projectDungeonPoint(caster.x, caster.y, camera, centerX, centerY);
+    ctx.save();
+    ctx.lineCap = 'round';
+    if (effect.type === 'partyHeal' || effect.type === 'healPulse') {
+      const targets = effect.type === 'partyHeal'
+        ? snapshot.party
+        : snapshot.party.filter((member) => effect.targetCharacterIds?.includes(member.characterId));
+      for (const target of targets) {
+        const screen = this.projectDungeonPoint(target.x, target.y, camera, centerX, centerY);
+        ctx.globalAlpha = 1 - progress * .7;
+        ctx.strokeStyle = '#fff1a6';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y - 12, 8 + progress * 24, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fff8cf';
+        ctx.fillRect(screen.x - 2, screen.y - 31 - progress * 8, 4, 14);
+        ctx.fillRect(screen.x - 7, screen.y - 26 - progress * 8, 14, 4);
+      }
+    } else {
+      const targets = effect.targetRuntimeIds
+        .map((runtimeId) => snapshot.enemies.find((enemy) => enemy.runtimeId === runtimeId))
+        .filter(Boolean);
+      if (effect.type === 'chainDamage') {
+        const points = [caster, ...targets].map((actor) => this.projectDungeonPoint(actor.x, actor.y, camera, centerX, centerY));
+        ctx.strokeStyle = '#bff3ff';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([8, 5]);
+        ctx.lineDashOffset = -timeMs / 25;
+        ctx.beginPath();
+        points.forEach((point, index) => index === 0 ? ctx.moveTo(point.x, point.y - 15) : ctx.lineTo(point.x, point.y - 15));
+        ctx.stroke();
+      } else if (targets[0]) {
+        const targetScreen = this.projectDungeonPoint(targets[0].x, targets[0].y, camera, centerX, centerY);
+        const travel = clamp(progress / .72, 0, 1);
+        const x = casterScreen.x + (targetScreen.x - casterScreen.x) * travel;
+        const y = casterScreen.y - 18 + (targetScreen.y - casterScreen.y) * travel;
+        ctx.fillStyle = progress < .72 ? '#ffb05f' : '#ffe49b';
+        ctx.strokeStyle = '#8f483c';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, progress < .72 ? 8 : 12 + (progress - .72) * 45, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   drawCharacter(member, x, y, scale, timeMs) {
     const ctx = this.context;
     const attackFrame = member.attackingMs > 0 && Math.floor(timeMs / 100) % 2 === 1;
-    const lean = attackFrame ? 5 * scale : 0;
-    const size = 18 * scale;
+    const lean = attackFrame ? (member.combatStyle === 'melee' ? 6 : 2) * scale : 0;
+    const bob = Math.sin(timeMs / 210 + member.characterId.length) * 1.2 * scale;
+    const size = 20 * scale;
     ctx.save();
-    ctx.translate(Math.round(x + lean), Math.round(y));
+    ctx.translate(Math.round(x + lean), Math.round(y + bob));
     ctx.lineWidth = Math.max(1.5, 2.2 * scale);
     ctx.strokeStyle = INK;
-    ctx.fillStyle = member.color;
+    ctx.fillStyle = 'rgb(38 31 36 / 25%)';
+    ctx.beginPath();
+    ctx.ellipse(0, size * .88, size * .62, size * .22, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    if (member.role === 'Tank' || member.role === 'Striker') {
+    ctx.fillStyle = member.color;
+    if (member.spriteId === 'sprite_dinu' || member.spriteId === 'sprite_bob') {
       ctx.beginPath();
-      ctx.arc(-size * .28, -size * .46, size * .22, 0, Math.PI * 2);
-      ctx.arc(size * .28, -size * .46, size * .22, 0, Math.PI * 2);
+      ctx.arc(-size * .33, -size * .5, size * .24, 0, Math.PI * 2);
+      ctx.arc(size * .33, -size * .5, size * .24, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-    } else if (member.role === 'Caster') {
+    } else if (member.spriteId === 'sprite_lynn') {
       ctx.beginPath();
-      ctx.moveTo(-size * .42, -size * .35);
-      ctx.lineTo(-size * .28, -size * .88);
+      ctx.moveTo(-size * .48, -size * .32);
+      ctx.lineTo(-size * .3, -size * .98);
       ctx.lineTo(-size * .02, -size * .48);
-      ctx.moveTo(size * .42, -size * .35);
-      ctx.lineTo(size * .28, -size * .88);
-      ctx.lineTo(size * .02, -size * .48);
+      ctx.lineTo(size * .3, -size * .98);
+      ctx.lineTo(size * .48, -size * .32);
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
     }
 
     ctx.beginPath();
-    ctx.arc(0, -size * .2, size * .55, 0, Math.PI * 2);
+    ctx.arc(0, -size * .18, size * .58, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(0, size * .45, size * .48, size * .5, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, size * .5, size * .5, size * .52, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
@@ -589,7 +781,7 @@ export class GameRenderer {
     ctx.arc(size * .18, -size * .28, Math.max(1, size * .055), 0, Math.PI * 2);
     ctx.fill();
 
-    if (member.role === 'Healer') {
+    if (member.spriteId === 'sprite_hoya') {
       ctx.fillStyle = '#ef9a4d';
       ctx.beginPath();
       ctx.moveTo(-size * .12, -size * .1);
@@ -598,21 +790,58 @@ export class GameRenderer {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      ctx.strokeStyle = '#fff3a6';
+      ctx.lineWidth = Math.max(1.5, 3 * scale);
+      ctx.beginPath();
+      ctx.moveTo(-size * .45, size * .34);
+      ctx.quadraticCurveTo(-size * .82, size * .5, -size * .52, size * .72);
+      ctx.stroke();
+    } else if (member.spriteId === 'sprite_dinu') {
+      ctx.fillStyle = '#fff0bf';
+      ctx.beginPath();
+      ctx.ellipse(size * .08, -size * .02, size * .25, size * .17, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.arc(size * .2, -size * .06, size * .055, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (member.spriteId === 'sprite_lynn') {
+      ctx.strokeStyle = '#575064';
+      ctx.lineWidth = Math.max(1.5, 3 * scale);
+      ctx.beginPath();
+      ctx.moveTo(-size * .36, size * .23);
+      ctx.quadraticCurveTo(0, size * .42, size * .43, size * .22);
+      ctx.stroke();
+    } else if (member.spriteId === 'sprite_bob') {
+      ctx.fillStyle = '#e49a55';
+      ctx.strokeStyle = INK;
+      ctx.fillRect(-size * .48, size * .42, size * .96, size * .2);
+      ctx.strokeRect(-size * .48, size * .42, size * .96, size * .2);
     }
 
     ctx.strokeStyle = INK;
     ctx.lineWidth = Math.max(1.5, 2 * scale);
     ctx.beginPath();
-    const armReach = attackFrame ? size * 1.05 : size * .55;
+    const armReach = attackFrame ? size * (member.combatStyle === 'melee' ? 1.08 : .76) : size * .55;
     ctx.moveTo(size * .28, size * .28);
     ctx.lineTo(armReach, attackFrame ? size * .05 : size * .42);
     ctx.stroke();
     if (attackFrame) {
-      ctx.fillStyle = '#fff7c8';
-      ctx.beginPath();
-      ctx.arc(size * 1.12, size * .02, size * .16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (member.combatStyle === 'melee') {
+        ctx.fillStyle = member.spriteId === 'sprite_bob' ? '#9c795d' : '#fff7c8';
+        ctx.beginPath();
+        ctx.roundRect(size * .92, -size * .12, size * .35, size * .25, size * .06);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = .75;
+        ctx.fillStyle = member.attackType === 'magic' ? '#bdefff' : '#fff1a2';
+        ctx.beginPath();
+        ctx.arc(size * .82, size * .02, size * .18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }

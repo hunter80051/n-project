@@ -1,6 +1,6 @@
 const clampPercent = (value) => `${Math.max(0, Math.min(100, value))}%`;
 
-function createMeter(label, value, max, className = '') {
+function createMeter(label, className = '') {
   const row = document.createElement('div');
   row.className = 'meter-row';
 
@@ -11,14 +11,17 @@ function createMeter(label, value, max, className = '') {
   track.className = 'meter-track';
   const fill = document.createElement('div');
   fill.className = `meter-fill ${className}`.trim();
-  fill.style.width = clampPercent(max > 0 ? (value / max) * 100 : 0);
   track.append(fill);
 
   const amount = document.createElement('span');
-  amount.textContent = `${Math.ceil(value)} / ${Math.ceil(max)}`;
 
   row.append(name, track, amount);
-  return row;
+  return { row, fill, amount };
+}
+
+function updateMeter(meter, value, max) {
+  meter.fill.style.width = clampPercent(max > 0 ? (value / max) * 100 : 0);
+  meter.amount.textContent = `${Math.ceil(value)} / ${Math.ceil(max)}`;
 }
 
 export function createUI(callbacks = {}) {
@@ -36,14 +39,26 @@ export function createUI(callbacks = {}) {
     scrollList: document.getElementById('scroll-list'),
     eventLog: document.getElementById('event-log'),
     toastContainer: document.getElementById('toast-container'),
-    skillModal: document.getElementById('skill-modal'),
-    skillTitle: document.getElementById('skill-modal-title'),
-    skillDescription: document.getElementById('skill-modal-description'),
-    skillChoices: document.getElementById('skill-choice-list')
+    decisionList: document.getElementById('decision-list'),
+    decisionEmpty: document.getElementById('decision-empty')
   };
 
   elements.pauseButton.addEventListener('click', () => callbacks.onTogglePause?.());
   elements.enterButton.addEventListener('click', () => callbacks.onEnterDungeon?.());
+  const scrollViews = new Map();
+  const partyViews = new Map();
+  let decisionRenderSignature = '';
+
+  function bindInstantAction(button, action) {
+    button.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || button.disabled) return;
+      action();
+    });
+    button.addEventListener('click', (event) => {
+      if (event.detail !== 0 || button.disabled) return;
+      action();
+    });
+  }
 
   function setLoading(loading, message = '載入 Google Sheet 相容配置中…') {
     elements.loadingMessage.textContent = message;
@@ -68,63 +83,87 @@ export function createUI(callbacks = {}) {
   }
 
   function renderParty(party) {
-    const cards = party.map((member) => {
-      const card = document.createElement('article');
-      card.className = `party-card${member.attacking ? ' is-attacking' : ''}`;
-      card.style.setProperty('--character-color', member.color);
-
-      const badge = document.createElement('div');
-      badge.className = 'character-badge';
-      badge.textContent = member.name.slice(0, 1);
-
-      const summary = document.createElement('div');
-      const line = document.createElement('div');
-      line.className = 'character-line';
-      const name = document.createElement('strong');
-      name.textContent = member.name;
-      const meta = document.createElement('span');
-      meta.textContent = `Lv.${member.level} ${member.role}`;
-      line.append(name, meta);
-      summary.append(line, createMeter('HP', member.hp, member.maxHp), createMeter('SP', member.sp, member.maxSp, 'sp'));
-
-      const details = document.createElement('div');
-      details.className = 'character-details';
+    const activeIds = new Set(party.map((member) => member.characterId));
+    for (const [characterId, view] of partyViews) {
+      if (activeIds.has(characterId)) continue;
+      view.card.remove();
+      partyViews.delete(characterId);
+    }
+    for (const member of party) {
+      let view = partyViews.get(member.characterId);
+      if (!view) {
+        const card = document.createElement('article');
+        const badge = document.createElement('div');
+        const face = document.createElement('span');
+        face.className = 'badge-face';
+        const eyes = document.createElement('span');
+        eyes.className = 'badge-eyes';
+        const feature = document.createElement('span');
+        feature.className = 'badge-feature';
+        badge.append(face, eyes, feature);
+        const summary = document.createElement('div');
+        const line = document.createElement('div');
+        line.className = 'character-line';
+        const name = document.createElement('strong');
+        const meta = document.createElement('span');
+        line.append(name, meta);
+        const hpMeter = createMeter('HP');
+        const spMeter = createMeter('SP', 'sp');
+        summary.append(line, hpMeter.row, spMeter.row);
+        const details = document.createElement('div');
+        details.className = 'character-details';
+        card.append(badge, summary, details);
+        view = { card, badge, name, meta, hpMeter, spMeter, details };
+        partyViews.set(member.characterId, view);
+        elements.partyList.append(card);
+      }
+      view.card.className = `party-card${member.attacking ? ' is-attacking' : ''}`;
+      view.card.style.setProperty('--character-color', member.color);
+      view.badge.className = `character-badge ${member.spriteId}`;
+      view.badge.setAttribute('aria-label', `${member.name} 頭像`);
+      view.name.textContent = member.name;
+      view.meta.textContent = `Lv.${member.level} ${member.role}`;
+      updateMeter(view.hpMeter, member.hp, member.maxHp);
+      updateMeter(view.spMeter, member.sp, member.maxSp);
       const learned = member.learnedSkillNames.length > 0 ? member.learnedSkillNames.join('、') : '尚未學習升級技能';
-      details.textContent = `技能：${learned}｜武器：${member.weaponName}｜防具：${member.armorName}`;
-
-      card.append(badge, summary, details);
-      return card;
-    });
-    elements.partyList.replaceChildren(...cards);
+      view.details.textContent = `技能：${learned}｜武器：${member.weaponName}｜防具：${member.armorName}`;
+    }
   }
 
   function renderScrolls(scrolls) {
-    const buttons = scrolls.map((scroll) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'scroll-button';
-      button.disabled = scroll.disabled || scroll.quantity <= 0;
-      button.addEventListener('click', () => callbacks.onUseScroll?.(scroll.scrollId));
-
-      const icon = document.createElement('span');
-      icon.className = 'scroll-icon';
-      icon.textContent = scroll.effectType === 'partyHeal' ? '✦' : scroll.effectType === 'chainDamage' ? 'ϟ' : '✹';
-
-      const copy = document.createElement('span');
-      copy.className = 'scroll-copy';
-      const name = document.createElement('strong');
-      name.textContent = scroll.name;
-      const description = document.createElement('small');
-      description.textContent = scroll.description;
-      copy.append(name, description);
-
-      const count = document.createElement('span');
-      count.className = 'scroll-count';
-      count.textContent = `×${scroll.quantity}`;
-      button.append(icon, copy, count);
-      return button;
-    });
-    elements.scrollList.replaceChildren(...buttons);
+    const activeIds = new Set(scrolls.map((scroll) => scroll.scrollId));
+    for (const [scrollId, view] of scrollViews) {
+      if (activeIds.has(scrollId)) continue;
+      view.button.remove();
+      scrollViews.delete(scrollId);
+    }
+    for (const scroll of scrolls) {
+      let view = scrollViews.get(scroll.scrollId);
+      if (!view) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'scroll-button';
+        const icon = document.createElement('span');
+        icon.className = 'scroll-icon';
+        const copy = document.createElement('span');
+        copy.className = 'scroll-copy';
+        const name = document.createElement('strong');
+        const description = document.createElement('small');
+        copy.append(name, description);
+        const count = document.createElement('span');
+        count.className = 'scroll-count';
+        button.append(icon, copy, count);
+        bindInstantAction(button, () => callbacks.onUseScroll?.(scroll.scrollId));
+        view = { button, icon, name, description, count };
+        scrollViews.set(scroll.scrollId, view);
+        elements.scrollList.append(button);
+      }
+      view.button.disabled = scroll.disabled || scroll.quantity <= 0;
+      view.icon.textContent = scroll.effectType === 'partyHeal' ? '✦' : scroll.effectType === 'chainDamage' ? 'ϟ' : '✹';
+      view.name.textContent = scroll.name;
+      view.description.textContent = scroll.description;
+      view.count.textContent = `×${scroll.quantity}`;
+    }
   }
 
   function pushEvent(message) {
@@ -132,29 +171,7 @@ export function createUI(callbacks = {}) {
     row.className = 'event-row';
     row.textContent = message;
     elements.eventLog.prepend(row);
-    while (elements.eventLog.children.length > 8) elements.eventLog.lastElementChild.remove();
-  }
-
-  function showSkillChoices(character, skills) {
-    elements.skillTitle.textContent = `${character.name} 升到 Lv.${character.level}`;
-    elements.skillDescription.textContent = '選擇一項技能立即學習，冒險會在選擇後繼續。';
-    const cards = skills.map((skill) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'skill-card';
-      const name = document.createElement('strong');
-      name.textContent = skill.name;
-      const description = document.createElement('span');
-      description.textContent = skill.description;
-      button.append(name, description);
-      button.addEventListener('click', () => {
-        const keepOpen = callbacks.onChooseSkill?.(character.characterId, skill.skillId);
-        if (!keepOpen) elements.skillModal.close();
-      });
-      return button;
-    });
-    elements.skillChoices.replaceChildren(...cards);
-    if (!elements.skillModal.open) elements.skillModal.showModal();
+    while (elements.eventLog.children.length > 40) elements.eventLog.lastElementChild.remove();
   }
 
   function showEquipmentNotice({ characterName, oldItemName, newItemName, durationMs = 3500 }) {
@@ -163,6 +180,61 @@ export function createUI(callbacks = {}) {
     toast.textContent = `${characterName} 裝備替換：${oldItemName || '空欄位'} → ${newItemName}`;
     elements.toastContainer.append(toast);
     window.setTimeout(() => toast.remove(), durationMs);
+  }
+
+  function renderDecisions(decisions) {
+    const ordered = [...decisions].sort((a, b) => a.decisionOrder - b.decisionOrder);
+    const signature = JSON.stringify(ordered.map((decision) => decision.kind === 'skill'
+      ? [decision.kind, decision.decisionId, decision.characterId, decision.level,
+        decision.choices.map((skill) => skill.skillId)]
+      : [decision.kind, decision.proposalId, decision.characterId, decision.oldScore,
+        decision.item.itemId, decision.item.score]));
+    if (signature === decisionRenderSignature) return;
+    decisionRenderSignature = signature;
+    const cards = ordered.map((decision) => {
+      if (decision.kind === 'equipment') {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'decision-card equipment-decision';
+        const type = document.createElement('span');
+        type.className = 'decision-type';
+        type.textContent = '裝備';
+        const title = document.createElement('strong');
+        title.textContent = `${decision.characterName}｜${decision.slot === 'weapon' ? '武器' : '防具'}`;
+        const change = document.createElement('span');
+        change.textContent = `${decision.oldItemName} → ${decision.item.name}`;
+        const score = document.createElement('small');
+        score.textContent = `評分 ${decision.oldScore} → ${decision.item.score}｜點擊立即換裝`;
+        card.append(type, title, change, score);
+        bindInstantAction(card, () => callbacks.onAcceptEquipment?.(decision.proposalId));
+        return card;
+      }
+
+      const card = document.createElement('article');
+      card.className = 'decision-card skill-decision';
+      const type = document.createElement('span');
+      type.className = 'decision-type';
+      type.textContent = '技能';
+      const title = document.createElement('strong');
+      title.textContent = `${decision.characterName} 升到 Lv.${decision.level}`;
+      const options = document.createElement('div');
+      options.className = 'decision-skill-options';
+      for (const skill of decision.choices) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        const name = document.createElement('strong');
+        name.textContent = skill.name;
+        const description = document.createElement('small');
+        description.textContent = skill.description;
+        button.append(name, description);
+        bindInstantAction(button, () => callbacks.onChooseSkill?.(decision.characterId, skill.skillId));
+        options.append(button);
+      }
+      card.append(type, title, options);
+      return card;
+    });
+    elements.decisionList.replaceChildren(...cards);
+    elements.decisionEmpty.hidden = cards.length > 0;
   }
 
   function setPaused(paused) {
@@ -177,8 +249,8 @@ export function createUI(callbacks = {}) {
     renderParty,
     renderScrolls,
     pushEvent,
-    showSkillChoices,
     showEquipmentNotice,
+    renderDecisions,
     setPaused
   };
 }

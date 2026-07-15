@@ -26,6 +26,14 @@ export function createSeededRandom(seed) {
 
 const randomInt = (random, min, max) => Math.floor(random() * (max - min + 1)) + min;
 const pointKey = (point) => `${point.x},${point.y}`;
+const CORRIDOR_RADIUS = 1;
+const corridorFootprint = (point) => {
+  const cells = [];
+  for (let y = point.y - CORRIDOR_RADIUS; y <= point.y + CORRIDOR_RADIUS; y += 1) {
+    for (let x = point.x - CORRIDOR_RADIUS; x <= point.x + CORRIDOR_RADIUS; x += 1) cells.push({ x, y });
+  }
+  return cells;
+};
 const roomCenter = (room) => ({
   x: room.x + Math.floor(room.width / 2),
   y: room.y + Math.floor(room.height / 2)
@@ -142,16 +150,12 @@ function orthogonalCorridor(from, to, horizontalFirst) {
 }
 
 function canUseCorridorPoint(point, width, height, fromRoom, toRoom, rooms, occupiedCorridors) {
-  if (point.x <= 0 || point.y <= 0 || point.x >= width - 1 || point.y >= height - 1) return false;
-  const insideEndpoint = pointInRoom(point, fromRoom) || pointInRoom(point, toRoom);
-  const clearance = [
-    point,
-    { x: point.x - 1, y: point.y },
-    { x: point.x + 1, y: point.y },
-    { x: point.x, y: point.y - 1 },
-    { x: point.x, y: point.y + 1 }
-  ];
-  if (!insideEndpoint && clearance.some((neighbor) => occupiedCorridors.has(pointKey(neighbor)))) return false;
+  if (point.x <= CORRIDOR_RADIUS || point.y <= CORRIDOR_RADIUS
+    || point.x >= width - CORRIDOR_RADIUS - 1 || point.y >= height - CORRIDOR_RADIUS - 1) return false;
+  const clearance = corridorFootprint(point);
+  if (clearance.some((neighbor) => !pointInRoom(neighbor, fromRoom)
+    && !pointInRoom(neighbor, toRoom)
+    && occupiedCorridors.has(pointKey(neighbor)))) return false;
   return !rooms.some((room) => room !== fromRoom && room !== toRoom
     && clearance.some((neighbor) => pointInRoom(neighbor, room)));
 }
@@ -209,7 +213,9 @@ function findCorridorPath(width, height, fromRoom, toRoom, rooms, occupiedCorrid
 }
 
 function carveCorridorPath(tiles, path) {
-  for (const point of path) tiles[point.y][point.x] = TILE.FLOOR;
+  for (const point of path) {
+    for (const cell of corridorFootprint(point)) tiles[cell.y][cell.x] = TILE.FLOOR;
+  }
 }
 
 function findDungeonCorridors(width, height, rooms, parentIndexes, targetOrder, random) {
@@ -228,7 +234,9 @@ function findDungeonCorridors(width, height, rooms, parentIndexes, targetOrder, 
     if (!corridor) return null;
     corridors[targetIndex - 1] = corridor;
     for (const point of corridor) {
-      if (!rooms.some((room) => pointInRoom(point, room))) occupiedCorridors.add(pointKey(point));
+      for (const cell of corridorFootprint(point)) {
+        if (!rooms.some((room) => pointInRoom(cell, room))) occupiedCorridors.add(pointKey(cell));
+      }
     }
   }
   return corridors;
@@ -270,6 +278,27 @@ function findDoor(corridor, fromRoom, targetGroup) {
   };
 }
 
+function createDoorSideWalls(doors) {
+  const walls = [];
+  for (const door of doors) {
+    const perpendicular = { x: -door.direction.y, y: door.direction.x };
+    for (const sign of [-1, 1]) {
+      walls.push({
+        type: DUNGEON_OBJECT.WALL,
+        x: door.x + perpendicular.x * sign,
+        y: door.y + perpendicular.y * sign,
+        edge: door.direction.x < 0 ? 'west'
+          : door.direction.x > 0 ? 'east'
+            : door.direction.y < 0 ? 'north' : 'south',
+        orientation: door.direction.x !== 0 ? 'axisY' : 'axisX',
+        revealGroup: door.revealGroup,
+        targetGroup: door.targetGroup
+      });
+    }
+  }
+  return walls;
+}
+
 function assignRevealGroups(tiles, rooms, corridors) {
   const groups = tiles.map((row) => row.map(() => -1));
   rooms.forEach((room, group) => {
@@ -280,7 +309,9 @@ function assignRevealGroups(tiles, rooms, corridors) {
   corridors.forEach((corridor, index) => {
     const group = index + 1;
     for (const point of corridor) {
-      if (groups[point.y][point.x] < 0 || groups[point.y][point.x] > group) groups[point.y][point.x] = group;
+      for (const cell of corridorFootprint(point)) {
+        if (groups[cell.y][cell.x] < 0 || groups[cell.y][cell.x] > group) groups[cell.y][cell.x] = group;
+      }
     }
   });
   return groups;
@@ -422,6 +453,7 @@ function tryGenerateDungeon(options, seed) {
     edges.push([fromIndex, index]);
   }
   const groups = assignRevealGroups(tiles, orderedRooms, corridors);
+  const doorSideWalls = createDoorSideWalls(doors);
   const entrance = roomCenter(orderedRooms[0]);
   const stairs = roomCenter(orderedRooms.at(-1));
   tiles[entrance.y][entrance.x] = TILE.ENTRANCE;
@@ -456,6 +488,7 @@ function tryGenerateDungeon(options, seed) {
     groups,
     objects,
     doorTriggers: doors.map((door) => ({ ...door.trigger, targetGroup: door.targetGroup })),
+    doorSideWalls,
     maxRevealGroup: orderedRooms.length - 1,
     entrance,
     stairs,
@@ -558,6 +591,7 @@ export function findPath(tiles, start, goal, visibility = null) {
       const key = pointKey(next);
       if (previous.has(key) || !isWalkable(tiles[next.y][next.x])) continue;
       if (visibility?.groups && visibility.groups[next.y][next.x] > visibility.maxGroup) continue;
+      if (visibility?.blocked?.has(key) && key !== goalKey) continue;
       previous.set(key, point);
       queue.push(next);
     }

@@ -1,7 +1,7 @@
-import { loadGameData } from './data-loader.js';
-import { GameRenderer } from './renderer.js';
-import { GameSimulation } from './simulation.js';
-import { createUI } from './ui.js';
+import { loadGameData } from './data-loader.js?v=20260716a';
+import { GameRenderer } from './renderer.js?v=20260716a';
+import { GameSimulation } from './simulation.js?v=20260716a';
+import { createUI } from './ui.js?v=20260716a';
 
 let simulation = null;
 let renderer = null;
@@ -22,7 +22,10 @@ const ui = createUI({
   onChooseSkill(characterId, skillId) {
     if (!simulation?.chooseSkill(characterId, skillId)) return false;
     updateUi(simulation.getSnapshot());
-    return Boolean(simulation.activeLevelUp);
+    return true;
+  },
+  onAcceptEquipment(proposalId) {
+    if (simulation?.acceptEquipment(proposalId)) updateUi(simulation.getSnapshot());
   }
 });
 
@@ -53,6 +56,8 @@ function updateUi(snapshot) {
     characterId: member.characterId,
     name: member.name,
     role: member.role,
+    spriteId: member.spriteId,
+    combatStyle: member.combatStyle,
     color: member.color,
     level: member.level,
     hp: member.hp,
@@ -74,6 +79,12 @@ function updateUi(snapshot) {
       || snapshot.paused
       || (scroll.effectType !== 'partyHeal' && snapshot.enemies.length === 0)
   })));
+  ui.renderDecisions([
+    ...snapshot.pendingSkillChoices.map((decision) => ({ ...decision, kind: 'skill' })),
+    ...snapshot.pendingEquipment
+      .filter((offer) => offer.item.score > offer.oldScore)
+      .map((offer) => ({ ...offer, kind: 'equipment' }))
+  ]);
 }
 
 async function start() {
@@ -85,10 +96,7 @@ async function start() {
     simulation = new GameSimulation(data, {
       onEvent: (message) => ui.pushEvent(message),
       onEquipment: (notice) => ui.showEquipmentNotice(notice),
-      onLevelUp: (character, choices) => {
-        updateUi(simulation.getSnapshot());
-        ui.showSkillChoices(character, choices);
-      },
+      onLevelUp: () => updateUi(simulation.getSnapshot()),
       onSceneChange: (snapshot) => updateUi(snapshot)
     });
 
@@ -128,7 +136,8 @@ async function start() {
     window.GamePrototype = {
       getSnapshot: () => simulation.getSnapshot(),
       enterDungeon: () => simulation.enterDungeon(),
-      useScroll: (scrollId) => simulation.useScroll(scrollId)
+      useScroll: (scrollId) => simulation.useScroll(scrollId),
+      acceptEquipment: (proposalId) => simulation.acceptEquipment(proposalId)
     };
   } catch (error) {
     console.error(error);

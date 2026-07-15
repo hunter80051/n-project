@@ -164,8 +164,11 @@ def validation_links(text: str) -> str:
             urls.append(url)
     if not urls:
         return ""
-    links = "\n".join(f"- [{url}]({url})" for url in urls)
-    return f"\n\n驗證連結：\n{links}"
+    links = "\n".join(
+        f"[驗證連結{f' {index}' if index > 1 else ''}]({url})"
+        for index, url in enumerate(urls, start=1)
+    )
+    return f"\n\n{links}"
 
 
 async def send_long(ctx: commands.Context, text: str) -> None:

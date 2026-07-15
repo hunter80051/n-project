@@ -30,7 +30,7 @@ TABLE_FILES = {
 SCHEMAS = {
     "balance": ["key", "value", "type", "description"],
     "characters": [
-        "characterId", "name", "role", "color", "spriteId", "maxHp", "maxSp",
+        "characterId", "name", "role", "combatStyle", "attackType", "color", "spriteId", "maxHp", "maxSp",
         "attack", "defense", "speed", "attackRange", "attackCooldownMs",
         "basicSkillId", "skillPoolId",
     ],
@@ -245,6 +245,10 @@ def check_foreign_keys(
 
     for row in rows_by_table.get("characters", []):
         character_id = row.get("characterId", "")
+        if row.get("combatStyle") not in {"melee", "ranged"}:
+            errors.append(f"characters.{character_id} combatStyle 必須是 melee 或 ranged")
+        if row.get("attackType") not in {"physical", "magic"}:
+            errors.append(f"characters.{character_id} attackType 必須是 physical 或 magic")
         if row.get("basicSkillId") not in ids.get("skills", set()):
             errors.append(f"characters.{character_id} 找不到 basicSkillId：{row.get('basicSkillId')}")
         if row.get("skillPoolId") not in skill_pools:

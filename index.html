@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="固定小隊自動探索三層程序式地下城的單機網頁 RPG 展示版">
   <title>DTTO Friends Dungeon Prototype</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260716a">
 </head>
 <body>
   <main class="app-shell">
@@ -30,15 +30,27 @@
           <button id="enter-dungeon-button" class="enter-dungeon-button" type="button" hidden>
             進入下一座地下城
           </button>
+          <div id="toast-container" class="toast-container" aria-live="polite"></div>
         </div>
 
-        <section class="event-panel" aria-label="冒險紀錄">
-          <div class="section-heading">
-            <h2>冒險紀錄</h2>
-            <span>最新事件</span>
-          </div>
-          <div id="event-log" class="event-log" aria-live="polite"></div>
-        </section>
+        <div class="stage-bottom">
+          <section class="event-panel" aria-label="冒險紀錄">
+            <div class="section-heading">
+              <h2>冒險紀錄</h2>
+              <span>最新事件置頂</span>
+            </div>
+            <div id="event-log" class="event-log" aria-live="polite"></div>
+          </section>
+
+          <section class="decision-panel" aria-label="待處理選項">
+            <div class="section-heading">
+              <h2>待處理選項</h2>
+              <span>最舊優先</span>
+            </div>
+            <div id="decision-list" class="decision-list"></div>
+            <p id="decision-empty" class="decision-empty">目前沒有待處理選項</p>
+          </section>
+        </div>
       </section>
 
       <aside class="sidebar">
@@ -57,11 +69,10 @@
           </div>
           <div id="scroll-list" class="scroll-list"></div>
         </section>
+
       </aside>
     </div>
   </main>
-
-  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <div id="loading-overlay" class="screen-overlay">
     <div class="overlay-card">
@@ -78,15 +89,6 @@
     </div>
   </div>
 
-  <dialog id="skill-modal" class="skill-modal" aria-labelledby="skill-modal-title">
-    <div class="modal-heading">
-      <p class="eyebrow">LEVEL UP</p>
-      <h2 id="skill-modal-title">選擇技能</h2>
-      <p id="skill-modal-description"></p>
-    </div>
-    <div id="skill-choice-list" class="skill-choice-list"></div>
-  </dialog>
-
-  <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/main.js?v=20260716a"></script>
 </body>
 </html>

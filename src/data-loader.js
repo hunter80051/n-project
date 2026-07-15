@@ -3,7 +3,7 @@ const TABLE_SCHEMAS = {
     required: ['key', 'value', 'type', 'description']
   },
   characters: {
-    required: ['characterId', 'name', 'role', 'color', 'spriteId', 'maxHp', 'maxSp', 'attack', 'defense', 'speed', 'attackRange', 'attackCooldownMs', 'basicSkillId', 'skillPoolId'],
+    required: ['characterId', 'name', 'role', 'combatStyle', 'attackType', 'color', 'spriteId', 'maxHp', 'maxSp', 'attack', 'defense', 'speed', 'attackRange', 'attackCooldownMs', 'basicSkillId', 'skillPoolId'],
     numbers: ['maxHp', 'maxSp', 'attack', 'defense', 'speed', 'attackRange', 'attackCooldownMs']
   },
   skills: {
@@ -186,6 +186,12 @@ export function validateGameData(data) {
   }
 
   for (const character of data.characters) {
+    if (!['melee', 'ranged'].includes(character.combatStyle)) {
+      errors.push(`characters.${character.characterId} combatStyle 必須是 melee 或 ranged`);
+    }
+    if (!['physical', 'magic'].includes(character.attackType)) {
+      errors.push(`characters.${character.characterId} attackType 必須是 physical 或 magic`);
+    }
     if (!indexes.skillById.has(character.basicSkillId)) {
       errors.push(`characters.${character.characterId} 找不到 basicSkillId：${character.basicSkillId}`);
     }
