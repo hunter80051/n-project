@@ -1,7 +1,7 @@
 import { loadGameData } from './data-loader.js?v=20260716a';
-import { GameRenderer } from './renderer.js?v=20260716a';
-import { GameSimulation } from './simulation.js?v=20260716a';
-import { createUI } from './ui.js?v=20260716a';
+import { GameRenderer } from './renderer.js?v=20260716b';
+import { GameSimulation } from './simulation.js?v=20260716b';
+import { createUI } from './ui.js?v=20260716b';
 
 let simulation = null;
 let renderer = null;
@@ -10,6 +10,9 @@ let lastUiUpdate = 0;
 const ui = createUI({
   onEnterDungeon() {
     if (simulation?.enterDungeon()) updateUi(simulation.getSnapshot());
+  },
+  onSkipDungeon() {
+    if (simulation?.skipDungeon()) updateUi(simulation.getSnapshot());
   },
   onTogglePause() {
     if (!simulation) return;
@@ -32,13 +35,18 @@ const ui = createUI({
 function updateUi(snapshot) {
   if (!snapshot) return;
   if (snapshot.scene === 'world') {
-    const nextDungeon = simulation.data.dungeons[snapshot.dungeonRun % simulation.data.dungeons.length];
+    const activeDestination = snapshot.worldMap.destinations.find((destination) =>
+      destination.destinationIndex === snapshot.worldMap.activeDestinationIndex);
     const travelPercent = Math.round(snapshot.worldTravelProgress * 100);
     ui.updateHeader({
       sceneName: '朋友們的冒險地圖',
       floorLabel: snapshot.worldMap.arrived ? '已抵達入口' : '大地圖移動中',
-      progressLabel: `已攻克 ${snapshot.dungeonRun} 座｜${nextDungeon.name} ${travelPercent}%`,
-      canEnterDungeon: snapshot.worldMap.arrived
+      progressLabel: `已攻克 ${snapshot.dungeonRun} 座｜${activeDestination?.name ?? '尋找地下城'} ${travelPercent}%`
+    });
+    ui.updateDungeonChoice({
+      visible: snapshot.worldMap.arrived && Boolean(activeDestination),
+      dungeonName: activeDestination?.name ?? '',
+      intel: activeDestination?.intel ?? null
     });
   } else {
     ui.updateHeader({
@@ -46,9 +54,9 @@ function updateUi(snapshot) {
       floorLabel: `第 ${snapshot.floorNumber} / 3 層｜區域 ${snapshot.revealedGroup + 1}`,
       progressLabel: snapshot.floorCleared
         ? snapshot.floorNumber === 3 ? '傳送魔法陣已啟動' : '下層樓梯已解鎖'
-        : snapshot.enemies.length > 0 ? `目前區域敵人 ${snapshot.enemies.length}` : '前往房門探索下一區',
-      canEnterDungeon: false
+        : snapshot.enemies.length > 0 ? `目前區域敵人 ${snapshot.enemies.length}` : '前往房門探索下一區'
     });
+    ui.updateDungeonChoice({ visible: false });
   }
 
   ui.setPaused(snapshot.paused);

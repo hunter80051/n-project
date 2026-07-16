@@ -1,5 +1,5 @@
 import { DUNGEON_OBJECT, TILE } from './dungeon.js?v=20260716a';
-import { getWorldTile, WORLD_OBJECT, WORLD_TERRAIN } from './world-map.js';
+import { getWorldTile, WORLD_OBJECT, WORLD_TERRAIN } from './world-map.js?v=20260716b';
 
 const INK = '#392f35';
 const CREAM = '#fff8e9';
@@ -56,7 +56,7 @@ export class GameRenderer {
 
     for (const entry of visibleTiles) this.drawWorldTile(entry, world, timeMs);
     for (const entry of visibleTiles) {
-      if (entry.tile.object) this.drawWorldObject(entry, snapshot.dungeonRun, timeMs);
+      if (entry.tile.object) this.drawWorldObject(entry, world.activeDestinationIndex, timeMs);
     }
 
     snapshot.party.forEach((member) => {
@@ -64,7 +64,8 @@ export class GameRenderer {
       this.drawCharacter(member, screen.x, screen.y, .78, timeMs);
     });
 
-    const nextDungeon = this.data.dungeons[snapshot.dungeonRun % this.data.dungeons.length];
+    const activeDestination = world.destinations.find((destination) =>
+      destination.destinationIndex === world.activeDestinationIndex);
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgb(255 248 233 / 92%)';
     this.roundRect(24, 24, 390, 104, 16, true, true);
@@ -72,7 +73,7 @@ export class GameRenderer {
     ctx.font = 'bold 23px Trebuchet MS';
     ctx.fillText(snapshot.worldMap.arrived ? '地下城入口已抵達' : '沿著道路前進中', 45, 59);
     ctx.font = 'bold 18px Trebuchet MS';
-    ctx.fillText(`${nextDungeon.name}　難度 ${snapshot.dungeonRun + 1}`, 45, 89);
+    ctx.fillText(`${activeDestination?.name ?? '未知地下城'}　攻略階段 ${snapshot.dungeonRun + 1}`, 45, 89);
     ctx.font = '14px Trebuchet MS';
     ctx.fillText(`地圖延展 ${world.destinations.length} 區｜路程 ${Math.round(snapshot.worldTravelProgress * 100)}%`, 45, 114);
   }
@@ -161,7 +162,7 @@ export class GameRenderer {
     }
   }
 
-  drawWorldObject(entry, activeDungeonRun, timeMs) {
+  drawWorldObject(entry, activeDestinationIndex, timeMs) {
     const { tile, screen } = entry;
     const ctx = this.context;
     const baseY = screen.y + 7;
@@ -176,7 +177,7 @@ export class GameRenderer {
     else if (tile.object === WORLD_OBJECT.LARGE_ROCK) this.drawWorldRock(1);
     else if (tile.object === WORLD_OBJECT.SMALL_ROCK) this.drawWorldRock(.62);
     else if (tile.object === WORLD_OBJECT.DUNGEON) {
-      this.drawWorldDungeonEntrance(tile, tile.dungeonRun === activeDungeonRun, timeMs);
+      this.drawWorldDungeonEntrance(tile, tile.destinationIndex === activeDestinationIndex, timeMs);
     }
     ctx.restore();
   }

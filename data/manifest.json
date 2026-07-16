@@ -9,5 +9,39 @@
     "lootTables": "data/loot_tables.csv",
     "scrolls": "data/scrolls.csv",
     "dungeons": "data/dungeons.csv"
+  },
+  "versions": {
+    "balance": {
+      "version": "20260716.1",
+      "sha256": "db71298e9ea87a37ba78ded64e8ebc5c104a3da44883831c4ca0d982a69e8cef"
+    },
+    "characters": {
+      "version": "20260716.1",
+      "sha256": "f17d312e233694ccba6433a938c44768e6ea320b4a916ad291a9f2115893b662"
+    },
+    "skills": {
+      "version": "20260716.1",
+      "sha256": "6467bb8ec01541ff9a4f4feb87701c9f1c5d39f503b22dba7dbefc066ad4260a"
+    },
+    "enemies": {
+      "version": "20260716.1",
+      "sha256": "d6ddcdafd9d4e456ada433d3370b8264ce2aed0e678c0cf9593e046708302572"
+    },
+    "items": {
+      "version": "20260716.1",
+      "sha256": "24ecf24f3ad2a5c6cfd604ad45e3fb82afecba99c91129b32ccbba0c84eeeb31"
+    },
+    "lootTables": {
+      "version": "20260716.1",
+      "sha256": "db89bd53ae993bcab20df181b6bb30f8121cebf5d7c96b021e2af00c1088d77d"
+    },
+    "scrolls": {
+      "version": "20260716.1",
+      "sha256": "ab72b0c2ff99f0b9e651d042d4428226ca429c0bba9384f330c7a8106ece9864"
+    },
+    "dungeons": {
+      "version": "20260716.1",
+      "sha256": "9359ac478021c48657569db6303714a92ffbe33bbfe5698f2ff846712b0d72ca"
+    }
   }
 }

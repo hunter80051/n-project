@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import re
@@ -17,6 +18,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 REFERENCE_PATTERN = re.compile(r"(?:src|href)=[\"']([^\"']+)[\"']", re.IGNORECASE)
+DATA_VERSION_PATTERN = re.compile(r"^\d{8}\.\d+$")
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 TABLE_FILES = {
     "balance": "balance.csv",
     "characters": "characters.csv",
@@ -168,6 +171,29 @@ def read_manifest(root: Path, errors: list[str]) -> dict:
             errors.append(f"manifest 缺少資料表：{', '.join(missing)}")
         if extra:
             errors.append(f"manifest 含未知資料表：{', '.join(extra)}")
+
+    versions = manifest.get("versions")
+    if not isinstance(versions, dict):
+        errors.append("manifest.json 的 versions 必須是物件")
+        return manifest
+    version_keys = set(versions)
+    if version_keys != expected:
+        missing = sorted(expected - version_keys)
+        extra = sorted(version_keys - expected)
+        if missing:
+            errors.append(f"manifest versions 缺少資料表：{', '.join(missing)}")
+        if extra:
+            errors.append(f"manifest versions 含未知資料表：{', '.join(extra)}")
+    for table_name, metadata in versions.items():
+        if not isinstance(metadata, dict):
+            errors.append(f"manifest versions.{table_name} 必須是物件")
+            continue
+        version = metadata.get("version")
+        digest = metadata.get("sha256")
+        if not isinstance(version, str) or not DATA_VERSION_PATTERN.fullmatch(version):
+            errors.append(f"manifest versions.{table_name}.version 必須符合 YYYYMMDD.N")
+        if not isinstance(digest, str) or not SHA256_PATTERN.fullmatch(digest):
+            errors.append(f"manifest versions.{table_name}.sha256 必須是 64 位小寫 SHA-256")
     return manifest
 
 
@@ -188,6 +214,13 @@ def read_tables(root: Path, manifest: dict, errors: list[str]) -> dict[str, list
         if path.name != expected_file:
             errors.append(f"{table_name} 應指向 {expected_file}，目前為 {path.name}")
         try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            expected_digest = manifest.get("versions", {}).get(table_name, {}).get("sha256")
+            if expected_digest and digest != expected_digest:
+                errors.append(
+                    f"{relative} 內容雜湊與 manifest 不符；"
+                    f"目前 {digest[:12]}，manifest {expected_digest[:12]}。請透過同步工具更新版本。"
+                )
             with path.open("r", encoding="utf-8", newline="") as stream:
                 reader = csv.DictReader(stream)
                 actual_fields = reader.fieldnames or []

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="固定小隊自動探索三層程序式地下城的單機網頁 RPG 展示版">
   <title>DTTO Friends Dungeon Prototype</title>
-  <link rel="stylesheet" href="style.css?v=20260716a">
+  <link rel="stylesheet" href="style.css?v=20260716f">
 </head>
 <body>
   <main class="app-shell">
@@ -27,9 +27,30 @@
           <canvas id="game-canvas" width="960" height="540">
             瀏覽器不支援 Canvas，無法執行遊戲。
           </canvas>
-          <button id="enter-dungeon-button" class="enter-dungeon-button" type="button" hidden>
-            進入下一座地下城
-          </button>
+          <section id="dungeon-choice" class="dungeon-choice-panel" aria-label="地下城情報" hidden>
+            <div class="dungeon-choice-details">
+              <div class="dungeon-choice-title">
+                <span class="dungeon-intel-label">地下城情報</span>
+                <strong id="dungeon-choice-name">未知地下城</strong>
+              </div>
+              <div class="dungeon-intel-row">
+                <span class="dungeon-intel-label">怪物組成：</span>
+                <div id="monster-hint-list" class="monster-hint-list"></div>
+              </div>
+              <div class="dungeon-intel-row">
+                <span class="dungeon-intel-label">任務難度：</span>
+                <strong id="difficulty-hint" class="difficulty-hint">一般</strong>
+              </div>
+            </div>
+            <div class="dungeon-choice-actions">
+              <button id="enter-dungeon-button" class="enter-dungeon-button" type="button">
+                進入地下城
+              </button>
+              <button id="skip-dungeon-button" class="skip-dungeon-button" type="button">
+                尋找其他地下城
+              </button>
+            </div>
+          </section>
           <div id="toast-container" class="toast-container" aria-live="polite"></div>
         </div>
 
@@ -89,6 +110,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js?v=20260716a"></script>
+  <script type="module" src="src/main.js?v=20260716b"></script>
 </body>
 </html>
