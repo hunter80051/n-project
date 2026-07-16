@@ -1,0 +1,6 @@
+{
+  "authMode": "oauth",
+  "spreadsheetId": "PASTE_SPREADSHEET_ID_HERE",
+  "oauthClientFile": "secrets/google-oauth-client.json",
+  "oauthTokenFile": "secrets/google-oauth-token.json"
+}

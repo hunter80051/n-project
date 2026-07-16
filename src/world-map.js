@@ -12,6 +12,22 @@ export const WORLD_OBJECT = Object.freeze({
   SMALL_ROCK: 'smallRock'
 });
 
+const MONSTER_HINTS = Object.freeze([
+  { id: 'goblin', name: '哥布林', spriteIndex: 0 },
+  { id: 'darkElf', name: '黑暗妖精', spriteIndex: 1 },
+  { id: 'ghost', name: '幽靈', spriteIndex: 2 },
+  { id: 'beast', name: '野獸', spriteIndex: 3 },
+  { id: 'orc', name: '獸人', spriteIndex: 4 }
+]);
+
+const MISSION_DIFFICULTIES = Object.freeze([
+  { id: 'normal', label: '一般' },
+  { id: 'hard', label: '困難' },
+  { id: 'migration', label: '大遷徙' },
+  { id: 'catastrophe', label: '災變' },
+  { id: 'special', label: '特殊條件' }
+]);
+
 const keyOf = (x, y) => `${x},${y}`;
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const TRAVEL_DIRECTIONS = [
@@ -39,6 +55,21 @@ function createRandom(seed) {
     value = Math.imul(value ^ (value >>> 15), value | 1);
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createDungeonIntel(seed, destinationIndex) {
+  const random = createRandom(seed + destinationIndex * 4099 + 1201);
+  const monsterCount = random() < 0.55 ? 1 : 2;
+  const available = [...MONSTER_HINTS];
+  const monsters = [];
+  while (monsters.length < monsterCount && available.length > 0) {
+    const index = Math.floor(random() * available.length);
+    monsters.push(available.splice(index, 1)[0]);
+  }
+  return {
+    monsters,
+    difficulty: MISSION_DIFFICULTIES[Math.floor(random() * MISSION_DIFFICULTIES.length)]
   };
 }
 
@@ -222,13 +253,14 @@ export function createWorldMap(seed = Date.now()) {
     partyPosition: { x: 0, y: 0 },
     pathIndex: 0,
     targetPathIndex: 0,
+    activeDestinationIndex: -1,
     arrived: false,
     bounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 }
   };
 }
 
-export function extendWorldMap(world, dungeonRun, dungeon) {
-  if (world.destinations.some((destination) => destination.dungeonRun === dungeonRun)) return world;
+export function extendWorldMap(world, destinationIndex, dungeon) {
+  if (world.destinations.some((destination) => destination.destinationIndex === destinationIndex)) return world;
 
   const segmentIndex = world.destinations.length;
   const random = createRandom(world.seed + segmentIndex * 7919 + 37);
@@ -272,30 +304,43 @@ export function extendWorldMap(world, dungeonRun, dungeon) {
 
   const startTile = setTerrain(world, start.x, start.y, WORLD_TERRAIN.ROAD, 'main');
   startTile.object = WORLD_OBJECT.DUNGEON;
-  startTile.dungeonRun = Math.max(-1, dungeonRun - 1);
   const endTile = setTerrain(world, end.x, end.y, WORLD_TERRAIN.ROAD, 'main');
   endTile.object = WORLD_OBJECT.DUNGEON;
-  endTile.dungeonRun = dungeonRun;
+  endTile.destinationIndex = destinationIndex;
   endTile.dungeonId = dungeon.dungeonId;
   endTile.themeColor = dungeon.themeColor;
   endTile.label = dungeon.name;
+  endTile.status = 'active';
 
   fillWaterBoundary(world);
   updateBounds(world);
 
   const destination = {
-    dungeonRun,
+    destinationIndex,
     dungeonId: dungeon.dungeonId,
     name: dungeon.name,
     themeColor: dungeon.themeColor,
+    intel: createDungeonIntel(world.seed, destinationIndex),
+    status: 'active',
     x: end.x,
     y: end.y,
     pathIndex: world.mainPath.length - 1
   };
   world.destinations.push(destination);
+  world.activeDestinationIndex = destinationIndex;
   world.targetPathIndex = Math.max(world.pathIndex, destination.pathIndex - 1);
   world.arrived = world.pathIndex >= world.targetPathIndex;
   return world;
+}
+
+export function markActiveWorldDestination(world, status) {
+  const destination = world.destinations.find((candidate) =>
+    candidate.destinationIndex === world.activeDestinationIndex);
+  if (!destination) return null;
+  destination.status = status;
+  const tile = world.tiles.get(keyOf(destination.x, destination.y));
+  if (tile) tile.status = status;
+  return destination;
 }
 
 export function updateWorldTravel(world, distanceToMove) {

@@ -93,6 +93,7 @@ button:focus-visible {
 
 .ghost-button,
 .enter-dungeon-button,
+.skip-dungeon-button,
 .scroll-button {
   border: 2px solid var(--ink);
   color: var(--ink);
@@ -110,6 +111,7 @@ button:focus-visible {
 
 .ghost-button:hover,
 .enter-dungeon-button:hover,
+.skip-dungeon-button:hover,
 .scroll-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.04); }
 
 .main-layout {
@@ -144,18 +146,97 @@ button:focus-visible {
   image-rendering: crisp-edges;
 }
 
-.enter-dungeon-button {
+.dungeon-choice-panel {
   position: absolute;
   left: 50%;
-  bottom: 24px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: min(480px, calc(100% - 24px));
+  padding: 9px 10px;
+  border: var(--line);
+  border-radius: 12px;
   transform: translateX(-50%);
-  padding: 12px 22px;
-  border-radius: 999px;
-  box-shadow: 0 5px 0 rgb(57 47 53 / 45%);
-  font-weight: 900;
+  background: rgb(255 248 233 / 96%);
+  box-shadow: 4px 4px 0 rgb(57 47 53 / 30%);
 }
 
-.enter-dungeon-button:hover { transform: translate(-50%, -2px); }
+.dungeon-choice-panel[hidden] { display: none; }
+
+.dungeon-choice-details {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dungeon-choice-title,
+.dungeon-intel-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dungeon-choice-title strong {
+  overflow: hidden;
+  font-size: .86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dungeon-intel-label {
+  color: var(--ink-soft);
+  flex: 0 0 auto;
+  font-size: .64rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.monster-hint-list {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.monster-hint-icon {
+  width: 32px;
+  height: 32px;
+  background-image: url("assets/dungeon-monster-hints.png?v=20260716d");
+  background-repeat: no-repeat;
+  background-position: calc(var(--monster-index) * 25%) center;
+  background-size: 500% 100%;
+}
+
+.difficulty-hint {
+  color: var(--ink);
+  font-size: .78rem;
+  white-space: nowrap;
+}
+
+.difficulty-hint[data-difficulty="hard"],
+.difficulty-hint[data-difficulty="migration"] { color: #93651b; }
+
+.difficulty-hint[data-difficulty="catastrophe"] { color: #b44555; }
+.difficulty-hint[data-difficulty="special"] { color: #756482; }
+
+.dungeon-choice-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.enter-dungeon-button,
+.skip-dungeon-button {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.skip-dungeon-button { background: var(--blue); }
 
 .panel,
 .event-panel,
@@ -533,6 +614,22 @@ button:focus-visible {
   .topbar { align-items: flex-start; flex-direction: column; }
   .topbar-status { justify-content: flex-start; }
   .sidebar { grid-template-columns: 1fr; }
+  .dungeon-choice-panel {
+    bottom: 6px;
+    gap: 6px;
+    width: min(440px, calc(100% - 16px));
+    padding: 7px 8px;
+  }
+  .dungeon-choice-details { gap: 3px; }
+  .dungeon-choice-title,
+  .dungeon-intel-row { gap: 3px; }
+  .dungeon-intel-label { font-size: .58rem; }
+  .dungeon-choice-title strong { font-size: .74rem; }
+  .monster-hint-icon { width: 27px; height: 27px; }
+  .difficulty-hint { font-size: .68rem; }
+  .dungeon-choice-actions { gap: 4px; }
+  .enter-dungeon-button,
+  .skip-dungeon-button { padding: 6px 7px; font-size: .66rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

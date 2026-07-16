@@ -34,7 +34,12 @@ export function createUI(callbacks = {}) {
     floorLabel: document.getElementById('floor-label'),
     progressLabel: document.getElementById('progress-label'),
     pauseButton: document.getElementById('pause-button'),
+    dungeonChoice: document.getElementById('dungeon-choice'),
+    dungeonChoiceName: document.getElementById('dungeon-choice-name'),
+    monsterHintList: document.getElementById('monster-hint-list'),
+    difficultyHint: document.getElementById('difficulty-hint'),
     enterButton: document.getElementById('enter-dungeon-button'),
+    skipButton: document.getElementById('skip-dungeon-button'),
     partyList: document.getElementById('party-list'),
     scrollList: document.getElementById('scroll-list'),
     eventLog: document.getElementById('event-log'),
@@ -45,9 +50,11 @@ export function createUI(callbacks = {}) {
 
   elements.pauseButton.addEventListener('click', () => callbacks.onTogglePause?.());
   elements.enterButton.addEventListener('click', () => callbacks.onEnterDungeon?.());
+  elements.skipButton.addEventListener('click', () => callbacks.onSkipDungeon?.());
   const scrollViews = new Map();
   const partyViews = new Map();
   let decisionRenderSignature = '';
+  let dungeonChoiceSignature = '';
 
   function bindInstantAction(button, action) {
     button.addEventListener('pointerdown', (event) => {
@@ -75,11 +82,31 @@ export function createUI(callbacks = {}) {
     elements.errorOverlay.hidden = false;
   }
 
-  function updateHeader({ sceneName, floorLabel, progressLabel, canEnterDungeon = false }) {
+  function updateHeader({ sceneName, floorLabel, progressLabel }) {
     elements.sceneName.textContent = sceneName;
     elements.floorLabel.textContent = floorLabel;
     elements.progressLabel.textContent = progressLabel;
-    elements.enterButton.hidden = !canEnterDungeon;
+  }
+
+  function updateDungeonChoice({ visible, dungeonName = '', intel = null }) {
+    elements.dungeonChoice.hidden = !visible;
+    if (!visible || !intel) return;
+    const signature = JSON.stringify([dungeonName, intel.monsters, intel.difficulty]);
+    if (signature === dungeonChoiceSignature) return;
+    dungeonChoiceSignature = signature;
+    elements.dungeonChoiceName.textContent = dungeonName;
+    elements.difficultyHint.textContent = intel.difficulty.label;
+    elements.difficultyHint.dataset.difficulty = intel.difficulty.id;
+    const icons = intel.monsters.map((monster) => {
+      const icon = document.createElement('span');
+      icon.className = 'monster-hint-icon';
+      icon.style.setProperty('--monster-index', monster.spriteIndex);
+      icon.setAttribute('role', 'img');
+      icon.setAttribute('aria-label', monster.name);
+      icon.title = monster.name;
+      return icon;
+    });
+    elements.monsterHintList.replaceChildren(...icons);
   }
 
   function renderParty(party) {
@@ -246,6 +273,7 @@ export function createUI(callbacks = {}) {
     setLoading,
     setError,
     updateHeader,
+    updateDungeonChoice,
     renderParty,
     renderScrolls,
     pushEvent,

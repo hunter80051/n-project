@@ -6,6 +6,7 @@
 
 - 固定四人小隊獨立移動、自動探索與近／遠程自動戰鬥。
 - 前兩層程序式房間／三格寬走廊，第三層固定 Boss 房。
+- 抵達入口後顯示展示用怪物圖示與任務難度，可選擇進入或略過並繼續尋找其他地下城。
 - 清空敵人後解鎖樓梯，完成三層回到大地圖並進入下一座地下城。
 - HP／SP、物理／魔法投射物、升級三選一、寶箱拾取、待確認裝備及三種卷軸特效。
 - Canvas 遊戲畫面搭配 DOM 隊伍、卷軸、事件與升級介面。
@@ -32,6 +33,16 @@ python validate_project.py
 ## Google Sheets 配置
 
 資料欄位與發布方式記錄於 `data/README.md`。目前 manifest 指向 repository 內的 CSV；未來可把各表 URL 換成 Google Sheets「發布到網路」產生的公開 CSV URL，遊戲程式不需修改。
+
+目前另提供受控同步流程，建議用它取代直接發布公開 CSV：
+
+- `Setup Google Sheets Sync.bat`：建立本機虛擬環境並安裝 Google Sheets API 套件。
+- `Sync Google Sheets Data.bat`：檢查、套用及顯示 CSV 版本變更。
+- `GOOGLE-SHEETS-SYNC.md`：Google Cloud、OAuth 桌面登入與日常同步說明。
+- `GOOGLE-SHEETS-FIELD-GUIDE.md`：八張資料表逐欄完整說明。
+- `templates/N-Project-Game-Data-Google-Sheets-Template.xlsx`：可匯入 Google Drive 的 Google Sheets-ready 範本。
+
+同步工具只會在全部檢查通過並由使用者輸入 `APPLY` 後覆寫 CSV；不會自動 commit、push 或部署。
 
 完整開發範圍、驗收及規格變更紀錄請見 `PLANS.md`。
 

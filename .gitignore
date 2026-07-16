@@ -8,6 +8,10 @@ bot-startup.log
 jobs.json
 jobs.json.tmp
 .job-events/
+.venv-google-sheets/
+.sheet-sync/
+google_sheets_sync.json
+secrets/
 
 # Local reference inputs used for prototype analysis; keep them outside deploy commits.
 Game Sample/

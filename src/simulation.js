@@ -9,10 +9,11 @@ import {
   extendWorldMap,
   getWorldTile,
   getWorldTravelProgress,
+  markActiveWorldDestination,
   updateWorldTravel,
   WORLD_OBJECT,
   WORLD_TERRAIN
-} from './world-map.js';
+} from './world-map.js?v=20260716b';
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const positionKey = (point) => `${Math.round(point.x)},${Math.round(point.y)}`;
@@ -42,6 +43,7 @@ export class GameSimulation {
     };
     this.scene = 'world';
     this.dungeonRun = 0;
+    this.worldDestinationIndex = 0;
     this.floorNumber = 0;
     this.currentDungeon = null;
     this.floor = null;
@@ -67,7 +69,7 @@ export class GameSimulation {
     this.party = data.characters.map((config) => this.createPartyMember(config));
     this.scrolls = data.scrolls.map((config) => ({ ...config, quantity: config.initialQuantity }));
     this.worldMap = createWorldMap(Date.now());
-    if (data.dungeons.length > 0) extendWorldMap(this.worldMap, 0, data.dungeons[0]);
+    if (data.dungeons.length > 0) extendWorldMap(this.worldMap, this.worldDestinationIndex, data.dungeons[0]);
     this.initializeWorldPartyPositions();
     this.recalculatePartyStats();
   }
@@ -234,7 +236,10 @@ export class GameSimulation {
 
   enterDungeon() {
     if (this.scene !== 'world' || !this.worldMap.arrived || this.data.dungeons.length === 0) return false;
-    this.currentDungeon = this.data.dungeons[this.dungeonRun % this.data.dungeons.length];
+    const destination = this.worldMap.destinations.find((candidate) =>
+      candidate.destinationIndex === this.worldMap.activeDestinationIndex);
+    this.currentDungeon = destination ? this.data.indexes.dungeonById.get(destination.dungeonId) : null;
+    if (!this.currentDungeon) return false;
     this.scene = 'dungeon';
     this.floorNumber = 1;
     this.startFloor();
@@ -1160,6 +1165,19 @@ export class GameSimulation {
     return true;
   }
 
+  skipDungeon() {
+    if (this.scene !== 'world' || !this.worldMap.arrived || this.data.dungeons.length === 0) return false;
+    const skipped = markActiveWorldDestination(this.worldMap, 'skipped');
+    if (!skipped) return false;
+    this.worldDestinationIndex += 1;
+    const nextDungeon = this.data.dungeons[this.worldDestinationIndex % this.data.dungeons.length];
+    extendWorldMap(this.worldMap, this.worldDestinationIndex, nextDungeon);
+    this.initializeWorldPartyPositions();
+    this.emitEvent(`小隊決定略過「${skipped.name}」，繼續尋找其他地下城`);
+    this.emitSceneChange();
+    return true;
+  }
+
   useScroll(scrollId) {
     if (this.scene !== 'dungeon' || this.paused) return false;
     const scroll = this.scrolls.find((candidate) => candidate.scrollId === scrollId);
@@ -1256,6 +1274,7 @@ export class GameSimulation {
       return;
     }
     const completedName = this.currentDungeon.name;
+    markActiveWorldDestination(this.worldMap, 'completed');
     this.dungeonRun += 1;
     this.scene = 'world';
     this.floorNumber = 0;
@@ -1271,8 +1290,9 @@ export class GameSimulation {
       member.hp = Math.min(member.maxHp, member.hp + member.maxHp * 0.35);
       member.sp = member.maxSp;
     }
-    const nextDungeon = this.data.dungeons[this.dungeonRun % this.data.dungeons.length];
-    extendWorldMap(this.worldMap, this.dungeonRun, nextDungeon);
+    this.worldDestinationIndex += 1;
+    const nextDungeon = this.data.dungeons[this.worldDestinationIndex % this.data.dungeons.length];
+    extendWorldMap(this.worldMap, this.worldDestinationIndex, nextDungeon);
     this.initializeWorldPartyPositions();
     this.emitEvent(`成功攻克 ${completedName}，回到大地圖`);
     this.emitSceneChange();
@@ -1292,6 +1312,7 @@ export class GameSimulation {
       dungeon: this.currentDungeon,
       floorNumber: this.floorNumber,
       dungeonRun: this.dungeonRun,
+      worldDestinationIndex: this.worldDestinationIndex,
       worldMap: this.worldMap,
       worldTravelProgress: getWorldTravelProgress(this.worldMap),
       floor: this.floor,

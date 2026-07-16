@@ -252,10 +252,14 @@ export async function loadGameData(manifestUrl = 'data/manifest.json') {
   const tableNames = Object.keys(TABLE_SCHEMAS);
   const missingTables = tableNames.filter((name) => !manifest.tables?.[name]);
   if (missingTables.length > 0) throw new Error(`Manifest 缺少資料表：${missingTables.join(', ')}`);
+  const missingVersions = tableNames.filter((name) => !manifest.versions?.[name]?.version);
+  if (missingVersions.length > 0) throw new Error(`Manifest 缺少資料版本：${missingVersions.join(', ')}`);
 
   const entries = await Promise.all(tableNames.map(async (name) => {
     const url = new URL(manifest.tables[name], pageBase).href;
-    const text = await fetchText(url, `資料表 ${name}`);
+    const versionedUrl = new URL(url);
+    versionedUrl.searchParams.set('v', manifest.versions[name].version);
+    const text = await fetchText(versionedUrl.href, `資料表 ${name}`);
     return [name, parseTable(name, text)];
   }));
   const raw = Object.fromEntries(entries);
